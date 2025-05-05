@@ -1,4 +1,10 @@
 # hand-gesture-recognition-mediapipe-main
 
-Hand gesture stuff
-fork request
+Edit
+
+# max_num_hands
+
+to change number of hands that are read
+
+
+# python run.py
