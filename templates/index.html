@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hand Gesture Recognition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.js"></script>
+    <style>
+        body { background-color: #f3f4f6; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center">
+    <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-4xl">
+        <h1 class="text-2xl font-bold mb-4 text-center">Hand Gesture Recognition</h1>
+        <div class="mb-6">
+            <h2 class="text-xl font-semibold mb-2">Webcam Feed</h2>
+            <img src="http://127.0.0.1:5001" alt="Webcam Feed" class="w-full h-auto rounded border" />
+        </div>
+        <div class="flex justify-center space-x-4 mb-6">
+            <button id="startBtn" class="bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded disabled:bg-gray-400" onclick="startRecognition()">Start Recognition</button>
+            <button id="stopBtn" class="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-4 rounded disabled:bg-gray-400" onclick="stopRecognition()" disabled>Stop Recognition</button>
+        </div>
+        <h2 class="text-xl font-semibold mb-2">Gesture Log</h2>
+        <div class="overflow-x-auto">
+            <table id="gestureTable" class="min-w-full bg-white border">
+                <thead>
+                    <tr class="bg-gray-200">
+                        <th class="py-2 px-4 border">Timestamp</th>
+                        <th class="py-2 px-4 border">Handedness</th>
+                        <th class="py-2 px-4 border">Type</th>
+                        <th class="py-2 px-4 border">Label</th>
+                        <th class="py-2 px-4 border">ID</th>
+                    </tr>
+                </thead>
+                <tbody id="gestureTableBody">
+                    {% for gesture in gestures %}
+                    <tr>
+                        <td class="py-2 px-4 border">{{ gesture.timestamp }}</td>
+                        <td class="py-2 px-4 border">{{ gesture.handedness }}</td>
+                        <td class="py-2 px-4 border">{{ gesture.type }}</td>
+                        <td class="py-2 px-4 border">{{ gesture.label }}</td>
+                        <td class="py-2 px-4 border">{{ gesture.id }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const gestureTableBody = document.getElementById('gestureTableBody');
+
+        socket.on('new_gesture', (gesture) => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td class="py-2 px-4 border">${gesture.timestamp}</td>
+                <td class="py-2 px-4 border">${gesture.handedness}</td>
+                <td class="py-2 px-4 border">${gesture.type}</td>
+                <td class="py-2 px-4 border">${gesture.label}</td>
+                <td class="py-2 px-4 border">${gesture.id}</td>
+            `;
+            gestureTableBody.prepend(row);
+        });
+
+        async function startRecognition() {
+            try {
+                const response = await fetch('/start', { method: 'POST' });
+                const data = await response.json();
+                if (response.ok) {
+                    startBtn.disabled = true;
+                    stopBtn.disabled = false;
+                    alert(data.status);
+                } else {
+                    alert(data.status);
+                }
+            } catch (error) {
+                alert('Error starting recognition: ' + error.message);
+            }
+        }
+
+        async function stopRecognition() {
+            try {
+                const response = await fetch('/stop', { method: 'POST' });
+                const data = await response.json();
+                if (response.ok) {
+                    startBtn.disabled = false;
+                    stopBtn.disabled = true;
+                    alert(data.status);
+                } else {
+                    alert(data.status);
+                }
+            } catch (error) {
+                alert('Error stopping recognition: ' + error.message);
+            }
+        }
+    </script>
+</body>
+</html>
