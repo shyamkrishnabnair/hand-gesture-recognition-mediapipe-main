@@ -173,7 +173,10 @@ def gesture_recognition():
     point_history = deque(maxlen=history_length)
     finger_gesture_history = deque(maxlen=history_length)
 
-    while recognition_running:
+    #  ########################################################################
+    mode = 0
+
+    while True:
         fps = cvFpsCalc.get()
         ret, image = cap.read()
         if not ret:
@@ -365,10 +368,91 @@ def draw_landmarks(image, landmark_point):
         cv.line(image, tuple(landmark_point[17]), tuple(landmark_point[0]), (255, 255, 255), 2)
 
     for index, landmark in enumerate(landmark_point):
-        if index in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]:
-            size = 8 if index in [4, 8, 12, 16, 20] else 5  # Larger circles for fingertips
-            cv.circle(image, (landmark[0], landmark[1]), size, (255, 255, 255), -1)
-            cv.circle(image, (landmark[0], landmark[1]), size, (0, 0, 0), 1)
+        if index == 0:  # 手首1
+            cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                      -1)
+            cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+        if index == 1:  # 手首2
+            cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                      -1)
+            cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+        if index == 2:  # 親指：付け根
+            cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                      -1)
+            cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+        if index == 3:  # 親指：第1関節
+            cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                      -1)
+            cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+        if index == 4:  # 親指：指先
+            cv.circle(image, (landmark[0], landmark[1]), 8, (255, 255, 255),
+                      -1)
+            cv.circle(image, (landmark[0], landmark[1]), 8, (0, 0, 0), 1)
+        if index == 5:  # 人差指：付け根
+            cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                      -1)
+            cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+        if index == 6:  # 人差指：第2関節
+            cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                      -1)
+            cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+        if index == 7:  # 人差指：第1関節
+            cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                      -1)
+            cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+        if index == 8:  # 人差指：指先
+            cv.circle(image, (landmark[0], landmark[1]), 8, (255, 255, 255),
+                      -1)
+            cv.circle(image, (landmark[0], landmark[1]), 8, (0, 0, 0), 1)
+        if index == 9:  # 中指：付け根
+            cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                      -1)
+            cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+        if index == 10:  # 中指：第2関節
+            cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                      -1)
+            cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+        if index == 11:  # 中指：第1関節
+            cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                      -1)
+            cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+        if index == 12:  # 中指：指先
+            cv.circle(image, (landmark[0], landmark[1]), 8, (255, 255, 255),
+                      -1)
+            cv.circle(image, (landmark[0], landmark[1]), 8, (0, 0, 0), 1)
+        if index == 13:  # 薬指：付け根
+            cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                      -1)
+            cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+        if index == 14:  # 薬指：第2関節
+            cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                      -1)
+            cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+        if index == 15:  # 薬指：第1関節
+            cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                      -1)
+            cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+        if index == 16:  # 薬指：指先
+            cv.circle(image, (landmark[0], landmark[1]), 8, (255, 255, 255),
+                      -1)
+            cv.circle(image, (landmark[0], landmark[1]), 8, (0, 0, 0), 1)
+        if index == 17:  # 小指：付け根
+            cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                      -1)
+            cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+        if index == 18:  # 小指：第2関節
+            cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                      -1)
+            cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+        if index == 19:  # 小指：第1関節
+            cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                      -1)
+            cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+        if index == 20:  # 小指：指先
+            cv.circle(image, (landmark[0], landmark[1]), 8, (255, 255, 255),
+                      -1)
+            cv.circle(image, (landmark[0], landmark[1]), 8, (0, 0, 0), 1)
+
     return image
 
 def draw_bounding_rect(use_brect, image, brect):
