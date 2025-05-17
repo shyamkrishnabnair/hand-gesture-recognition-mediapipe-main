@@ -6,5 +6,9 @@ Edit
 
 to change number of hands that are read
 
-
 # python run.py
+
+app - flask server
+main - model
+run - model tkinter ui
+appmain - app + main
