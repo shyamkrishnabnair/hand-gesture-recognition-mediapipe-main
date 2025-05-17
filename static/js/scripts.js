@@ -3,18 +3,6 @@ const stopBtn = document.getElementById('stopBtn');
 const socket = io();
 const gestureTableBody = document.getElementById('gestureTableBody');
 
-// socket.on('new_gesture', (gesture) => {
-//     const row = document.createElement('tr');
-//     row.innerHTML = `
-//                 <td class="py-2 px-4 border">${gesture.timestamp}</td>
-//                 <td class="py-2 px-4 border">${gesture.handedness}</td>
-//                 <td class="py-2 px-4 border">${gesture.type}</td>
-//                 <td class="py-2 px-4 border">${gesture.label}</td>
-//                 <td class="py-2 px-4 border">${gesture.id}</td>
-//             `;
-//     gestureTableBody.prepend(row);
-// });
-
 async function startRecognition() {
     try {
         const response = await fetch('http://127.0.0.1:5000/start', { method: 'POST' });

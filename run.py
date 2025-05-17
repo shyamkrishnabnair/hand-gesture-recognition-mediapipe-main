@@ -17,7 +17,7 @@ def update_timer():
 def start_script():
     global process, start_time, running
     if process is None or process.poll() is not None:
-        process = subprocess.Popen(['python', 'app.py'])
+        process = subprocess.Popen(['python', 'main.py'])
         start_time = time.time()
         running = True
         update_timer()
@@ -38,14 +38,12 @@ def stop_script():
         print("No running script to stop")
 
 def refresh_gui():
-    stop_script()  # Stop the running model (app.py)
-    # Restart the 'run.py' script (without stopping app.py)
-    root.destroy()  # Close the current window
-    subprocess.Popen([sys.executable, 'run.py'])  # Reopen the 'run.py' script
-    print("GUI refreshed (run.py restarted)")
+    stop_script()
+    root.destroy() 
+    subprocess.Popen([sys.executable, 'main.py'])
+    print("GUI refreshed (main.py restarted)")
 
 def refresh_script():
-    
     stop_script()
     start_script()
     print("Script refreshed")
@@ -56,7 +54,7 @@ def on_close():
             stop_script()
             root.destroy()
         else:
-            return  # cancel closing
+            return 
     else:
         root.destroy()
 
