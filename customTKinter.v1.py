@@ -17,17 +17,21 @@ import mediapipe as mp
 from PIL import Image, ImageTk
 import time
 import subprocess
-
+import pygame
 import customtkinter as ctk #type: ignore
+try:
+    pygame.mixer.init()
+except pygame.error as e:
+    print(f"Warning: Could not initialize mixer: {e}")
 
 # Model imports
-from utils import CvFpsCalc
-from utils.get_args import get_args
+# from utils import CvFpsCalc
+# from utils.get_args import get_args
 from model import KeyPointClassifier, PointHistoryClassifier
-from utils.select_mode import select_mode
+# from utils.select_mode import select_mode
 from utils.calculate import calc_bounding_rect, calc_landmark_list
 from utils.pre_process import pre_process_landmark, pre_process_point_history
-from utils.log import logging_csv
+# from utils.log import logging_csv
 from utils.draw import draw_info_text, draw_bounding_rect, draw_point_history, draw_info, draw_landmarks
 
 # CustomTkinter setup
@@ -38,6 +42,18 @@ ctk.set_default_color_theme("dark-blue")
 running = False
 cap = None
 start_time = None
+sounds_mapping = {
+    1: "sounds/kick-bass.mp3",
+    2: "sounds/crash.mp3",
+    3: "sounds/snare.mp3",
+    4: "sounds/tom-1.mp3",
+    5: "sounds/tom-2.mp3",
+    6: "sounds/tom-3.mp3",
+    7: "sounds/cr78-Cymbal.mp3",
+    8: "sounds/cr78-Guiro 1.mp3",
+    9: "sounds/tempest-HiHat Metal.mp3",
+    10: "sounds/cr78-Bongo High.mp3"
+}
 
 # Load classifiers & labels once
 keypoint_classifier = KeyPointClassifier()
@@ -58,8 +74,8 @@ finger_gesture_history = deque(maxlen=16)
 def refresh():
     stop_camera()
     app.destroy()
-    subprocess.Popen([sys.executable, 'main.py'])
-    print("GUI refreshed (main.py restarted)")
+    subprocess.Popen([sys.executable, 'customTKinter.v1.py'])
+    print("GUI refreshed (customTKinter.v1.py restarted)")
 
 def quit_app():
     stop_camera()
@@ -96,6 +112,8 @@ def update_frame():
     if not running or not cap:
         return
 
+    frame_start_time = time.time()
+
     ret, image = cap.read()
     if not ret:
         return
@@ -104,38 +122,78 @@ def update_frame():
     debug_image = copy.deepcopy(image)
     image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
     results = hands.process(image)
-    number, mode = 0, 0
+    # number, mode = 0, 0
+    total_finger_count = 0
+    try:
+        if results.multi_hand_landmarks is not None:
+            for hand_landmarks, handedness in zip(results.multi_hand_landmarks, results.multi_handedness):
+                brect = calc_bounding_rect(debug_image, hand_landmarks)
+                landmark_list = calc_landmark_list(debug_image, hand_landmarks)
+                pre_processed_landmark_list = pre_process_landmark(landmark_list)
+                pre_processed_point_history_list = pre_process_point_history(debug_image, point_history)
 
-    if results.multi_hand_landmarks is not None:
-        for hand_landmarks, handedness in zip(results.multi_hand_landmarks, results.multi_handedness):
-            brect = calc_bounding_rect(debug_image, hand_landmarks)
-            landmark_list = calc_landmark_list(debug_image, hand_landmarks)
-            pre_processed_landmark_list = pre_process_landmark(landmark_list)
-            pre_processed_point_history_list = pre_process_point_history(debug_image, point_history)
+                hand_sign_id = keypoint_classifier(pre_processed_landmark_list)
+                if hand_sign_id == 2:
+                    point_history.append(landmark_list[8])
+                else:
+                    point_history.append([0, 0])
 
-            hand_sign_id = keypoint_classifier(pre_processed_landmark_list)
-            if hand_sign_id == 2:
-                point_history.append(landmark_list[8])
-            else:
-                point_history.append([0, 0])
+                finger_gesture_id = 0
+                if len(pre_processed_point_history_list) == 32:
+                    finger_gesture_id = point_history_classifier(pre_processed_point_history_list)
 
-            finger_gesture_id = 0
-            if len(pre_processed_point_history_list) == 32:
-                finger_gesture_id = point_history_classifier(pre_processed_point_history_list)
+                finger_gesture_history.append(finger_gesture_id)
+                most_common_fg_id = Counter(finger_gesture_history).most_common()
 
-            finger_gesture_history.append(finger_gesture_id)
-            most_common_fg_id = Counter(finger_gesture_history).most_common()
+               #  === FINGER COUNT LOGIC ===
+                hand_label = handedness.classification[0].label
+                hand_landmarks_xy = [[lm.x, lm.y] for lm in hand_landmarks.landmark]
 
-            debug_image = draw_bounding_rect(True, debug_image, brect)
-            debug_image = draw_landmarks(debug_image, landmark_list)
-            debug_image = draw_info_text(debug_image, brect, handedness,
-                                         keypoint_classifier_labels[hand_sign_id],
-                                         point_history_classifier_labels[most_common_fg_id[0][0]])
-    else:
-        point_history.append([0, 0])
+            
+                finger_count = 0
+                #Thumb
+                if (hand_label == "Left" and hand_landmarks_xy[4][0] > hand_landmarks_xy[3][0]) or (hand_label == "Right" and hand_landmarks_xy[4][0] < hand_landmarks_xy[3][0]):
+                    finger_count += 1
+
+                #Other fingers
+                for tip, pip in [(8, 6), (12, 10), (16, 14), (20, 18)]:
+                    if hand_landmarks_xy[tip][1] < hand_landmarks_xy[pip][1]:
+                        finger_count += 1
+
+                total_finger_count += finger_count
+
+                # ============================
+                print(f"Hand: {hand_label}, Finger Count: {finger_count}, Hand Sign ID: {hand_sign_id}, Gesture ID: {most_common_fg_id[0][0]}")
+                # # ================================================
+
+                debug_image = draw_bounding_rect(True, debug_image, brect)
+                debug_image = draw_landmarks(debug_image, landmark_list)
+                debug_image = draw_info_text(
+                    debug_image,
+                    brect,
+                    handedness,
+                    keypoint_classifier_labels[hand_sign_id],
+                    point_history_classifier_labels[most_common_fg_id[0][0]],
+                    total_finger_count,
+                )
+
+                # Play sound based on finger count
+                if total_finger_count in sounds_mapping:
+                    sound_file = sounds_mapping[total_finger_count]
+                    pygame.mixer.music.load(sound_file)
+                    pygame.mixer.music.play()
+                    pygame.time.delay(100 if total_finger_count <= 5 else 200)
+                    pygame.mixer.music.stop()
+        else:
+            point_history.append([0, 0])
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"Error processing frame: {e}")
 
     debug_image = draw_point_history(debug_image, point_history)
-    fps = int(1 / max(0.01, time.time() - start_time))
+    fps = int(1 / max(0.01, time.time() - frame_start_time))
     debug_image = draw_info(debug_image, fps, 0, 0)
 
     img = Image.fromarray(cv.cvtColor(debug_image, cv.COLOR_BGR2RGB))
