@@ -1,4 +1,4 @@
-# customTkinter.v1.py
+# customTkinter.v1.py -- gui + volume control + sound mapping
 # import warnings
 # import os
 # import absl.logging

@@ -1,6 +1,6 @@
-# customTKinter.v2.py
-import sys
+# customTkinter.v2.py
 
+import sys
 import csv
 import copy
 from collections import Counter, deque
@@ -22,7 +22,11 @@ except pygame.error as e:
 from model import KeyPointClassifier, PointHistoryClassifier
 from utils.calculate import calc_bounding_rect, calc_landmark_list
 from utils.pre_process import pre_process_landmark, pre_process_point_history
+from utils.log import logging_csv,logging
 from utils.draw import draw_info_text, draw_bounding_rect, draw_point_history, draw_info, draw_landmarks
+
+#incremental logs
+# log_file = logging()
 
 # CustomTkinter setup
 ctk.set_appearance_mode("dark")
@@ -35,6 +39,8 @@ start_time = None
 last_volume_level = 50
 pinch_mode = False
 pinch_start_x = 0
+is_muted = False
+left_hand_pinch_state = False  # to detect pinch toggles
 sounds_mapping = {
     1: "sounds/kick-bass.mp3",
     2: "sounds/crash.mp3",
@@ -67,13 +73,15 @@ finger_gesture_history = deque(maxlen=16)
 def refresh():
     stop_camera()
     app.destroy()
-    subprocess.Popen([sys.executable, 'customTKinter.v1.py'])
-    print("GUI refreshed (customTKinter.v1.py restarted)")
+    subprocess.Popen([sys.executable, 'customTkinter.v2.py'])
+    print("GUI refreshed (customTkinter.v2.py restarted)")
+    # log_file.close()
 
 def quit_app():
     stop_camera()
     app.destroy()
     print("GUI closed")
+    # log_file.close()
 
 def update_timer():
     if running:
@@ -142,7 +150,7 @@ def update_frame():
                 hand_landmarks_xy = [[lm.x, lm.y] for lm in hand_landmarks.landmark]
                 
                 # Get thumb tip (4) and index finger tip (8) positions
-                global last_volume_level, pinch_mode, pinch_start_x
+                global last_volume_level, pinch_mode, pinch_start_x, is_muted, left_hand_pinch_state
                 thumb_tip = hand_landmarks.landmark[4]
                 index_tip = hand_landmarks.landmark[8]
 
@@ -162,39 +170,52 @@ def update_frame():
 
                 # Normalize distance (tune min/max based on your hand size/camera)
                 dist = ((thumb_tip.x - index_tip.x) ** 2 + (thumb_tip.y - index_tip.y) ** 2) ** 0.5
-                min_dist, max_dist = 0.02, 0.20  # Tune for your hand/camera
+                min_dist, max_dist = 0.02, 0.20 
                 clamped_dist = max(min(dist, max_dist), min_dist)
                 volume_level = int(((clamped_dist - min_dist) / (max_dist - min_dist)) * 100)
 
                 # Detect pinch
-                is_pinch = dist < 0.07  # Normalized threshold (~7% of screen)
+                is_pinch = dist < 0.07  
+                label = handedness.classification[0].label
+                # ✋ LEFT HAND — Mute toggle
+                if label == "Left":
+                    if is_pinch and not left_hand_pinch_state:
+                        is_muted = not is_muted
+                        # print("Muted!" if is_muted else "Unmuted!")
+                        pygame.mixer.music.set_volume(0.0 if is_muted else last_volume_level / 100.0)
+                        left_hand_pinch_state = True  # Avoid multiple toggles
+                    elif not is_pinch:
+                        left_hand_pinch_state = False
 
-                ## Update volume level only during pinch
-                if is_pinch:
-                    cv.circle(debug_image, center_px, 15, (0, 255, 0), 3)  # Green circle when pinching
-                    if not pinch_mode:
-                        pinch_mode = True
-                        pinch_start_x = center_px[0]  # Start tracking horizontal movement
-                    else:
-                        delta_x = center_px[0] - pinch_start_x
-                        volume_delta = int(delta_x / 5)  # Adjust sensitivity here
-                        last_volume_level = max(0, min(100, last_volume_level + volume_delta))
+                    # Visual cue
+                    cv.circle(debug_image, center_px, 15, (255, 255, 0), 3)
+                elif label == "Right":
+                    # Update volume level only during pinch
+                    if is_pinch:
+                        cv.circle(debug_image, center_px, 15, (0, 255, 0), 3)
+                        if not pinch_mode:
+                            pinch_mode = True
+                            pinch_start_x = center_px[0]
+                        else:
+                            delta_x = center_px[0] - pinch_start_x
+                            volume_delta = int(delta_x / 5)  # Adjust sensitivity here
+                            last_volume_level = max(0, min(100, last_volume_level + volume_delta))
                         pinch_start_x = center_px[0]  # Update for next frame
-                    pygame.mixer.music.set_volume(last_volume_level / 100.0)
-                    # Draw volume bar (always draw last known level)
-                    bar_x, bar_y = 10, 85
-                    bar_width, bar_height = 150, 10
-                    filled_width = int(bar_width * (last_volume_level / 100))
-                    cv.rectangle(debug_image, (bar_x, bar_y), (bar_x + bar_width, bar_y + bar_height), (50, 50, 50), -1)
-                    cv.rectangle(debug_image, (bar_x, bar_y), (bar_x + filled_width, bar_y + bar_height), (0, 255, 0), -1)
-                    cv.putText(debug_image, f"Volume: {last_volume_level}%", (bar_x, bar_y - 10),
-                            cv.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv.LINE_AA)
-                    print("Volume Level (0-100):", volume_level)
-                else:
-                    cv.circle(debug_image, center_px, 15, (0, 0, 255), 2)  # Red circle when not pinching
-                    pinch_mode = False
+                        pygame.mixer.music.set_volume(last_volume_level / 100.0)
+                        bar_x, bar_y = 10, 85
+                        bar_width, bar_height = 150, 10
+                        filled_width = int(bar_width * (last_volume_level / 100))
+                        cv.rectangle(debug_image, (bar_x, bar_y), (bar_x + bar_width, bar_y + bar_height), (50, 50, 50), -1)
+                        cv.rectangle(debug_image, (bar_x, bar_y), (bar_x + filled_width, bar_y + bar_height), (0, 255, 0), -1)
+                        cv.putText(debug_image, f"Volume: {last_volume_level}%", (bar_x, bar_y - 10),
+                        cv.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv.LINE_AA)
+                        # print("Volume Level (0-100):", volume_level)
+                    else:
+                        cv.circle(debug_image, center_px, 15, (0, 0, 255), 2)
+                        pinch_mode = False
 
                 finger_count = 0
+
                 #Thumb
                 if (hand_label == "Left" and hand_landmarks_xy[4][0] > hand_landmarks_xy[3][0]) or (hand_label == "Right" and hand_landmarks_xy[4][0] < hand_landmarks_xy[3][0]):
                     finger_count += 1
@@ -222,7 +243,7 @@ def update_frame():
                     sound_file = sounds_mapping[total_finger_count]
                     pygame.mixer.music.load(sound_file)
                     pygame.mixer.music.play()
-                    pygame.time.delay(100 if total_finger_count <= 5 else 200)     
+                    pygame.time.delay(100 if total_finger_count <= 5 else 200)       
                     pygame.mixer.music.stop()
         else:
             point_history.append([0, 0])
