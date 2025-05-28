@@ -24,21 +24,21 @@ import mediapipe as mp
 
 
 #model imports
-from utils import CvFpsCalc
-from utils.get_args import get_args
+# from utils import CvFpsCalc
+# from utils.get_args import get_args
 from model import KeyPointClassifier
 from model import PointHistoryClassifier
-from utils.select_mode import select_mode
+# from utils.select_mode import select_mode
 from utils.calculate import calc_bounding_rect, calc_landmark_list
 from utils.pre_process import pre_process_landmark, pre_process_point_history
-from utils.log import logging_csv
+# from utils.log import logging_csv
 from utils.draw import draw_info_text, draw_bounding_rect, draw_point_history, draw_info, draw_landmarks
 
 #tkinter UI
 import tkinter as tk
 from PIL import Image, ImageTk
 import cv2
-import threading
+# import threading
 import time
 
 
