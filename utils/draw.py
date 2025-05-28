@@ -1,189 +1,48 @@
 import cv2 as cv
 
+import cv2 as cv
+
 def draw_landmarks(image, landmark_point):
-    if len(landmark_point) > 0:
-        # Thumb
-        cv.line(image, tuple(landmark_point[2]), tuple(landmark_point[3]),
-                (0, 0, 0), 6)
-        cv.line(image, tuple(landmark_point[2]), tuple(landmark_point[3]),
-                (255, 255, 255), 2)
-        cv.line(image, tuple(landmark_point[3]), tuple(landmark_point[4]),
-                (0, 0, 0), 6)
-        cv.line(image, tuple(landmark_point[3]), tuple(landmark_point[4]),
-                (255, 255, 255), 2)
+    if len(landmark_point) == 0:
+        return image
 
-        # Index finger
-        cv.line(image, tuple(landmark_point[5]), tuple(landmark_point[6]),
-                (0, 0, 0), 6)
-        cv.line(image, tuple(landmark_point[5]), tuple(landmark_point[6]),
-                (255, 255, 255), 2)
-        cv.line(image, tuple(landmark_point[6]), tuple(landmark_point[7]),
-                (0, 0, 0), 6)
-        cv.line(image, tuple(landmark_point[6]), tuple(landmark_point[7]),
-                (255, 255, 255), 2)
-        cv.line(image, tuple(landmark_point[7]), tuple(landmark_point[8]),
-                (0, 0, 0), 6)
-        cv.line(image, tuple(landmark_point[7]), tuple(landmark_point[8]),
-                (255, 255, 255), 2)
+    # Define connections (bones) and their colors
+    fingers = {
+        "thumb": ([2, 3, 4], (0, 102, 255)),        # Orange
+        "index": ([5, 6, 7, 8], (0, 255, 255)),      # Yellow
+        "middle": ([9, 10, 11, 12], (0, 255, 0)),    # Green
+        "ring": ([13, 14, 15, 16], (255, 0, 255)),   # Purple
+        "pinky": ([17, 18, 19, 20], (255, 0, 0)),    # Blue
+    }
 
-        # Middle finger
-        cv.line(image, tuple(landmark_point[9]), tuple(landmark_point[10]),
-                (0, 0, 0), 6)
-        cv.line(image, tuple(landmark_point[9]), tuple(landmark_point[10]),
-                (255, 255, 255), 2)
-        cv.line(image, tuple(landmark_point[10]), tuple(landmark_point[11]),
-                (0, 0, 0), 6)
-        cv.line(image, tuple(landmark_point[10]), tuple(landmark_point[11]),
-                (255, 255, 255), 2)
-        cv.line(image, tuple(landmark_point[11]), tuple(landmark_point[12]),
-                (0, 0, 0), 6)
-        cv.line(image, tuple(landmark_point[11]), tuple(landmark_point[12]),
-                (255, 255, 255), 2)
+    palm_connections = [
+        (0, 1), (1, 2), (2, 5), (5, 9),
+        (9, 13), (13, 17), (17, 0)
+    ]
 
-        # Ring finger
-        cv.line(image, tuple(landmark_point[13]), tuple(landmark_point[14]),
-                (0, 0, 0), 6)
-        cv.line(image, tuple(landmark_point[13]), tuple(landmark_point[14]),
-                (255, 255, 255), 2)
-        cv.line(image, tuple(landmark_point[14]), tuple(landmark_point[15]),
-                (0, 0, 0), 6)
-        cv.line(image, tuple(landmark_point[14]), tuple(landmark_point[15]),
-                (255, 255, 255), 2)
-        cv.line(image, tuple(landmark_point[15]), tuple(landmark_point[16]),
-                (0, 0, 0), 6)
-        cv.line(image, tuple(landmark_point[15]), tuple(landmark_point[16]),
-                (255, 255, 255), 2)
+    # Draw fingers
+    for finger_name, (points, color) in fingers.items():
+        for i in range(len(points) - 1):
+            pt1 = tuple(landmark_point[points[i]])
+            pt2 = tuple(landmark_point[points[i + 1]])
+            cv.line(image, pt1, pt2, (0, 0, 0), 6)      # black shadow
+            cv.line(image, pt1, pt2, color, 2)
 
-        # Little finger
-        cv.line(image, tuple(landmark_point[17]), tuple(landmark_point[18]),
-                (0, 0, 0), 6)
-        cv.line(image, tuple(landmark_point[17]), tuple(landmark_point[18]),
-                (255, 255, 255), 2)
-        cv.line(image, tuple(landmark_point[18]), tuple(landmark_point[19]),
-                (0, 0, 0), 6)
-        cv.line(image, tuple(landmark_point[18]), tuple(landmark_point[19]),
-                (255, 255, 255), 2)
-        cv.line(image, tuple(landmark_point[19]), tuple(landmark_point[20]),
-                (0, 0, 0), 6)
-        cv.line(image, tuple(landmark_point[19]), tuple(landmark_point[20]),
-                (255, 255, 255), 2)
+    # Draw palm connections
+    for (start, end) in palm_connections:
+        pt1 = tuple(landmark_point[start])
+        pt2 = tuple(landmark_point[end])
+        cv.line(image, pt1, pt2, (0, 0, 0), 6)
+        cv.line(image, pt1, pt2, (255, 255, 255), 2)
 
-        # Palm
-        cv.line(image, tuple(landmark_point[0]), tuple(landmark_point[1]),
-                (0, 0, 0), 6)
-        cv.line(image, tuple(landmark_point[0]), tuple(landmark_point[1]),
-                (255, 255, 255), 2)
-        cv.line(image, tuple(landmark_point[1]), tuple(landmark_point[2]),
-                (0, 0, 0), 6)
-        cv.line(image, tuple(landmark_point[1]), tuple(landmark_point[2]),
-                (255, 255, 255), 2)
-        cv.line(image, tuple(landmark_point[2]), tuple(landmark_point[5]),
-                (0, 0, 0), 6)
-        cv.line(image, tuple(landmark_point[2]), tuple(landmark_point[5]),
-                (255, 255, 255), 2)
-        cv.line(image, tuple(landmark_point[5]), tuple(landmark_point[9]),
-                (0, 0, 0), 6)
-        cv.line(image, tuple(landmark_point[5]), tuple(landmark_point[9]),
-                (255, 255, 255), 2)
-        cv.line(image, tuple(landmark_point[9]), tuple(landmark_point[13]),
-                (0, 0, 0), 6)
-        cv.line(image, tuple(landmark_point[9]), tuple(landmark_point[13]),
-                (255, 255, 255), 2)
-        cv.line(image, tuple(landmark_point[13]), tuple(landmark_point[17]),
-                (0, 0, 0), 6)
-        cv.line(image, tuple(landmark_point[13]), tuple(landmark_point[17]),
-                (255, 255, 255), 2)
-        cv.line(image, tuple(landmark_point[17]), tuple(landmark_point[0]),
-                (0, 0, 0), 6)
-        cv.line(image, tuple(landmark_point[17]), tuple(landmark_point[0]),
-                (255, 255, 255), 2)
+    # Draw joints (dots)
+    for i, (x, y) in enumerate(landmark_point):
+        radius = 8 if i in [4, 8, 12, 16, 20] else 5
+        color = (255, 255, 255)
+        outline = (0, 0, 0)
+        cv.circle(image, (x, y), radius, color, -1)
+        cv.circle(image, (x, y), radius, outline, 1)
 
-    # Key Points
-    for index, landmark in enumerate(landmark_point):
-        if index == 0:  
-            cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
-                      -1)
-            cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
-        if index == 1: 
-            cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
-                      -1)
-            cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
-        if index == 2:  
-            cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
-                      -1)
-            cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
-        if index == 3: 
-            cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
-                      -1)
-            cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
-        if index == 4:  
-            cv.circle(image, (landmark[0], landmark[1]), 8, (255, 255, 255),
-                      -1)
-            cv.circle(image, (landmark[0], landmark[1]), 8, (0, 0, 0), 1)
-        if index == 5:  
-            cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
-                      -1)
-            cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
-        if index == 6:  
-            cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
-                      -1)
-            cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
-        if index == 7:  
-            cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
-                      -1)
-            cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
-        if index == 8: 
-            cv.circle(image, (landmark[0], landmark[1]), 8, (255, 255, 255),
-                      -1)
-            cv.circle(image, (landmark[0], landmark[1]), 8, (0, 0, 0), 1)
-        if index == 9:  
-            cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
-                      -1)
-            cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
-        if index == 10: 
-            cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
-                      -1)
-            cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
-        if index == 11:
-            cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
-                      -1)
-            cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
-        if index == 12: 
-            cv.circle(image, (landmark[0], landmark[1]), 8, (255, 255, 255),
-                      -1)
-            cv.circle(image, (landmark[0], landmark[1]), 8, (0, 0, 0), 1)
-        if index == 13:  
-            cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
-                      -1)
-            cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
-        if index == 14: 
-            cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
-                      -1)
-            cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
-        if index == 15:
-            cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
-                      -1)
-            cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
-        if index == 16: 
-            cv.circle(image, (landmark[0], landmark[1]), 8, (255, 255, 255),
-                      -1)
-            cv.circle(image, (landmark[0], landmark[1]), 8, (0, 0, 0), 1)
-        if index == 17: 
-            cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
-                      -1)
-            cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
-        if index == 18: 
-            cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
-                      -1)
-            cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
-        if index == 19: 
-            cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
-                      -1)
-            cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
-        if index == 20: 
-            cv.circle(image, (landmark[0], landmark[1]), 8, (255, 255, 255),
-                      -1)
-            cv.circle(image, (landmark[0], landmark[1]), 8, (0, 0, 0), 1)
     return image
 
 
@@ -197,57 +56,61 @@ def draw_bounding_rect(use_brect, image, brect):
 
 def draw_info_text(image, brect, handedness, hand_sign_text,
                    finger_gesture_text, finger_count):
+    font = cv.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.55
+    thickness = 1
+    shadow = 2
     # Draw background rectangle for hand label
     cv.rectangle(image, (brect[0], brect[1]), (brect[2], brect[1] - 22),
                  (0, 0, 0), -1)
 
     # Combine handedness and hand sign
-    info_text = handedness.classification[0].label[0:]
+    info_text = handedness.classification[0].label
     if hand_sign_text != "":
-        info_text = info_text + ':' + hand_sign_text
+        info_text += f": {hand_sign_text}"
 
     # Draw hand label
-    cv.putText(image, info_text, (brect[0] + 5, brect[1] - 4),
-               cv.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1, cv.LINE_AA)
+    cv.putText(image, info_text, (brect[0] + 5, brect[1] - 5),
+               font, font_scale, (255, 255, 255), thickness, cv.LINE_AA)
 
     # Draw finger gesture text
     if finger_gesture_text != "":
-        cv.putText(image, "Finger Gesture:" + finger_gesture_text, (10, 60),
-                   cv.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 0), 4, cv.LINE_AA)
-        cv.putText(image, "Finger Gesture:" + finger_gesture_text, (10, 60),
-                   cv.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2,
-                   cv.LINE_AA)
+        y_pos = 50
+        text = f"Gesture: {finger_gesture_text}"
+        cv.putText(image, text, (10, y_pos), font, 0.7, (0, 0, 0), shadow, cv.LINE_AA)
+        cv.putText(image, text, (10, y_pos), font, 0.7, (255, 255, 255), thickness, cv.LINE_AA)
 
-    # Draw finger count (just below gesture)
-    cv.putText(image, f"Finger Count: {finger_count}", (10, 100),
-               cv.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 0), 4, cv.LINE_AA)
-    cv.putText(image, f"Finger Count: {finger_count}", (10, 100),
-               cv.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2,
-               cv.LINE_AA)
+    # Finger count (draw near hand)
+    cv.putText(image, f"Count: {finger_count}", (brect[0], brect[3] + 20),
+               cv.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2, cv.LINE_AA)
+
     return image
 
 
 def draw_point_history(image, point_history):
     for index, point in enumerate(point_history):
         if point[0] != 0 and point[1] != 0:
-            cv.circle(image, (point[0], point[1]), 1 + int(index / 2),
-                      (152, 251, 152), 2)
+            alpha = int(255 * (index / len(point_history)))  # Trail fade effect
+            color = (152, 251, 152)
+            cv.circle(image, (point[0], point[1]), 2 + index // 4, color, -1)
     return image
 
 
 def draw_info(image, fps, mode, number):
-    cv.putText(image, "FPS:" + str(fps), (10, 30), cv.FONT_HERSHEY_SIMPLEX,
-               1.0, (0, 0, 0), 4, cv.LINE_AA)
-    cv.putText(image, "FPS:" + str(fps), (10, 30), cv.FONT_HERSHEY_SIMPLEX,
-               1.0, (255, 255, 255), 2, cv.LINE_AA)
+    font = cv.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.6
+    thickness = 1
+    shadow = 2
+
+    cv.putText(image, f"FPS: {fps}", (10, 25), font, font_scale, (0, 0, 0), shadow, cv.LINE_AA)
+    cv.putText(image, f"FPS: {fps}", (10, 25), font, font_scale, (255, 255, 255), thickness, cv.LINE_AA)
 
     mode_string = ['Logging Key Point', 'Logging Point History']
     if 1 <= mode <= 2:
-        cv.putText(image, "MODE:" + mode_string[mode - 1], (10, 90),
-                   cv.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1,
-                   cv.LINE_AA)
+        cv.putText(image, f"MODE: {mode_string[mode - 1]}", (10, 55),
+                   font, font_scale - 0.1, (255, 255, 255), thickness, cv.LINE_AA)
         if 0 <= number <= 9:
-            cv.putText(image, "NUM:" + str(number), (10, 110),
-                       cv.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1,
-                       cv.LINE_AA)
+            cv.putText(image, f"NUM: {number}", (10, 75),
+                       font, font_scale - 0.1, (255, 255, 255), thickness, cv.LINE_AA)
+
     return image
