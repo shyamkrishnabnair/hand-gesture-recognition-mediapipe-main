@@ -57,7 +57,7 @@ def draw_bounding_rect(use_brect, image, brect):
 def draw_info_text(image, brect, handedness, hand_sign_text,
                    finger_gesture_text, finger_count):
     font = cv.FONT_HERSHEY_SIMPLEX
-    font_scale = 0.55
+    font_scale = 0.5
     thickness = 1
     shadow = 2
     # Draw background rectangle for hand label
@@ -98,7 +98,7 @@ def draw_point_history(image, point_history):
 
 def draw_info(image, fps, mode, number):
     font = cv.FONT_HERSHEY_SIMPLEX
-    font_scale = 0.6
+    font_scale = 0.4
     thickness = 1
     shadow = 2
 

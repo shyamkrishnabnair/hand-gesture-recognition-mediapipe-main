@@ -1,4 +1,4 @@
-# customTkinter.v2.py
+# customTkinter.v3.py
 
 # Library imports
 import sys
@@ -33,7 +33,7 @@ ctk.set_default_color_theme("dark-blue")
 running = False
 cap = None
 start_time = None
-last_volume_level = 50
+volume_level = 50
 pinch_mode = False
 pinch_start_x = 0
 is_muted = False
@@ -70,8 +70,8 @@ finger_gesture_history = deque(maxlen=16)
 def refresh():
     stop_camera()
     app.destroy()
-    subprocess.Popen([sys.executable, 'customTkinter.v2.py'])
-    print("GUI refreshed (customTkinter.v2.py restarted)")
+    subprocess.Popen([sys.executable, 'customTkinter.v3.py'])
+    print("GUI refreshed (customTkinter.v3.py restarted)")
     # log_file.close()
 
 def quit_app():
@@ -147,7 +147,7 @@ def update_frame():
                 hand_landmarks_xy = [[lm.x, lm.y] for lm in hand_landmarks.landmark]
                 
                 # Get thumb tip (4) and index finger tip (8) positions
-                global last_volume_level, pinch_mode, pinch_start_x, is_muted, left_hand_pinch_state
+                global volume_level, pinch_mode, pinch_start_x, is_muted, left_hand_pinch_state
                 thumb_tip = hand_landmarks.landmark[4]
                 index_tip = hand_landmarks.landmark[8]
 
@@ -169,7 +169,6 @@ def update_frame():
                 dist = ((thumb_tip.x - index_tip.x) ** 2 + (thumb_tip.y - index_tip.y) ** 2) ** 0.5
                 min_dist, max_dist = 0.02, 0.20 
                 clamped_dist = max(min(dist, max_dist), min_dist)
-                volume_level = int(((clamped_dist - min_dist) / (max_dist - min_dist)) * 100)
 
                 # Detect pinch
                 is_pinch = dist < 0.07  
@@ -178,16 +177,14 @@ def update_frame():
                 if label == "Left":
                     if is_pinch and not left_hand_pinch_state:
                         is_muted = not is_muted
-                        # print("Muted!" if is_muted else "Unmuted!")
-                        pygame.mixer.music.set_volume(0.0 if is_muted else last_volume_level / 100.0)
-                        left_hand_pinch_state = True  # Avoid multiple toggles
+                        pygame.mixer.music.set_volume(0.0 if is_muted else volume_level / 100.0)
+                        left_hand_pinch_state = True
                     elif not is_pinch:
                         left_hand_pinch_state = False
-
-                    # Visual cue
-                    cv.circle(debug_image, center_px, 15, (255, 255, 0), 3)
+                    cv.circle(debug_image, center_px, 10, (255, 255, 0), 3)
+                    if is_muted:
+                        cv.putText(debug_image, "Muted", (debug_image.shape[1] - 50, 15), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 0, cv.LINE_AA)
                 elif label == "Right":
-                    # Update volume level only during pinch
                     if is_pinch:
                         cv.circle(debug_image, center_px, 15, (0, 255, 0), 3)
                         if not pinch_mode:
@@ -195,16 +192,16 @@ def update_frame():
                             pinch_start_x = center_px[0]
                         else:
                             delta_x = center_px[0] - pinch_start_x
-                            volume_delta = int(delta_x / 5)  # Adjust sensitivity here
-                            last_volume_level = max(0, min(100, last_volume_level + volume_delta))
-                        pinch_start_x = center_px[0]  # Update for next frame
-                        pygame.mixer.music.set_volume(last_volume_level / 100.0)
+                            volume_delta = int(delta_x / 5) 
+                            volume_level = max(0, min(100, volume_level + volume_delta))
+                        pinch_start_x = center_px[0]  
+                        pygame.mixer.music.set_volume(volume_level / 100.0)
                         bar_x, bar_y = 10, 85
                         bar_width, bar_height = 150, 10
-                        filled_width = int(bar_width * (last_volume_level / 100))
+                        filled_width = int(bar_width * (volume_level / 100))
                         cv.rectangle(debug_image, (bar_x, bar_y), (bar_x + bar_width, bar_y + bar_height), (50, 50, 50), -1)
                         cv.rectangle(debug_image, (bar_x, bar_y), (bar_x + filled_width, bar_y + bar_height), (0, 255, 0), -1)
-                        cv.putText(debug_image, f"Volume: {last_volume_level}%", (bar_x, bar_y - 10),
+                        cv.putText(debug_image, f"Volume: {volume_level}%", (bar_x, bar_y - 10),
                         cv.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv.LINE_AA)
                         # print("Volume Level (0-100):", volume_level)
                     else:
@@ -255,7 +252,10 @@ def update_frame():
     debug_image = draw_info(debug_image, fps, 0, 0)
 
     img = Image.fromarray(cv.cvtColor(debug_image, cv.COLOR_BGR2RGB))
-    imgtk = ImageTk.PhotoImage(image=img)
+    frame_width = 1280
+    frame_height = 720
+    resized_img = img.resize((frame_width, frame_height))  # PIL resize
+    imgtk = ImageTk.PhotoImage(image=resized_img)
     video_label.imgtk = imgtk
     video_label.configure(image=imgtk)
 
