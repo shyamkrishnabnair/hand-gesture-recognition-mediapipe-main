@@ -1,13 +1,5 @@
-# customTkinter.v1.py
-# import warnings
-# import os
-# import absl.logging
+# customTKinter.v2.py
 import sys
-# warnings.filterwarnings("ignore")
-# os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-# os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
-# absl.logging.set_verbosity(absl.logging.ERROR)
-# sys.stderr = open(os.devnull, 'w')
 
 import csv
 import copy
@@ -27,17 +19,10 @@ except pygame.error as e:
     print(f"Warning: Could not initialize mixer: {e}")
 
 # Model imports
-# from utils import CvFpsCalc
-# from utils.get_args import get_args
 from model import KeyPointClassifier, PointHistoryClassifier
-# from utils.select_mode import select_mode
 from utils.calculate import calc_bounding_rect, calc_landmark_list
 from utils.pre_process import pre_process_landmark, pre_process_point_history
-from utils.log import logging_csv,logging
 from utils.draw import draw_info_text, draw_bounding_rect, draw_point_history, draw_info, draw_landmarks
-
-#incremental logs
-# log_file = logging()
 
 # CustomTkinter setup
 ctk.set_appearance_mode("dark")
@@ -84,13 +69,11 @@ def refresh():
     app.destroy()
     subprocess.Popen([sys.executable, 'customTKinter.v1.py'])
     print("GUI refreshed (customTKinter.v1.py restarted)")
-    # log_file.close()
 
 def quit_app():
     stop_camera()
     app.destroy()
     print("GUI closed")
-    # log_file.close()
 
 def update_timer():
     if running:
@@ -132,7 +115,6 @@ def update_frame():
     debug_image = copy.deepcopy(image)
     image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
     results = hands.process(image)
-    # number, mode = 0, 0
     total_finger_count = 0
     try:
         if results.multi_hand_landmarks is not None:
@@ -158,10 +140,6 @@ def update_frame():
                 # === FINGER COUNT LOGIC ===
                 hand_label = handedness.classification[0].label
                 hand_landmarks_xy = [[lm.x, lm.y] for lm in hand_landmarks.landmark]
-
-                # volume control
-                # def calc_distance(p1, p2):
-                #     return math.hypot(p1[0] - p2[0], p1[1] - p2[1])
                 
                 # Get thumb tip (4) and index finger tip (8) positions
                 global last_volume_level, pinch_mode, pinch_start_x
@@ -228,10 +206,6 @@ def update_frame():
 
                 total_finger_count += finger_count
 
-                # ============================
-                # print(f"Hand: {hand_label}, Finger Count: {total_finger_count}, Hand Sign ID: {hand_sign_id}, Gesture ID: {most_common_fg_id[0][0]}")
-                # # ================================================
-
                 debug_image = draw_bounding_rect(True, debug_image, brect)
                 debug_image = draw_landmarks(debug_image, landmark_list)
                 debug_image = draw_info_text(
@@ -248,8 +222,7 @@ def update_frame():
                     sound_file = sounds_mapping[total_finger_count]
                     pygame.mixer.music.load(sound_file)
                     pygame.mixer.music.play()
-                    pygame.time.delay(100 if total_finger_count <= 5 else 200)
-                    # pygame.mixer.music.play(-1)  # Loop forever         
+                    pygame.time.delay(100 if total_finger_count <= 5 else 200)     
                     pygame.mixer.music.stop()
         else:
             point_history.append([0, 0])
