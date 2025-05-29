@@ -1,6 +1,3 @@
-# customTkinter.v3.py
-
-# Library imports
 import sys
 import csv
 import copy
@@ -9,12 +6,17 @@ import cv2 as cv
 import mediapipe as mp
 from PIL import Image, ImageTk
 import time
+import math
 import subprocess
 import pygame
 import numpy as np
 import customtkinter as ctk #type: ignore
 import logging # Import standard logging module
-pygame.mixer.init()
+
+try:
+    pygame.mixer.init()
+except pygame.error as e:
+    print(f"Warning: Could not initialize mixer: {e}")
 
 # Model imports
 from model import KeyPointClassifier, PointHistoryClassifier
@@ -34,7 +36,7 @@ ctk.set_default_color_theme("dark-blue")
 running = False
 cap = None
 start_time = None
-volume_level = 50
+last_volume_level = 50
 pinch_mode = False
 pinch_start_x = 0
 is_muted = False
@@ -62,7 +64,8 @@ with open('model/point_history_classifier/point_history_classifier_label.csv', e
 
 # Mediapipe setup
 mp_hands = mp.solutions.hands
-hands = mp_hands.Hands(static_image_mode=False, max_num_hands=2, min_detection_confidence=0.7, min_tracking_confidence=0.5)
+hands = mp_hands.Hands(static_image_mode=False, max_num_hands=2,
+                        min_detection_confidence=0.7, min_tracking_confidence=0.5)
 
 point_history = deque(maxlen=16)
 finger_gesture_history = deque(maxlen=16)
@@ -113,8 +116,6 @@ class CTkTextboxHandler(logging.Handler):
 # and our custom CTkTextboxHandler.
 app_logger = logging.getLogger(__name__)
 app_logger.setLevel(logging.INFO) # Set the minimum logging level to INFO (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-
-
 
 def refresh():
     """
@@ -210,15 +211,17 @@ def update_frame():
                 landmark_list = calc_landmark_list(debug_image, hand_landmarks)
                 pre_processed_landmark_list = pre_process_landmark(landmark_list)
                 pre_processed_point_history_list = pre_process_point_history(debug_image, point_history)
-                
-                hand_sign_id = keypoint_classifier(pre_processed_landmark_list)
-                if hand_sign_id == 2:
-                    point_history.append(landmark_list[8])
-                else:
-                    point_history.append([0, 0])
 
+                # Classify hand sign (static pose)
+                hand_sign_id = keypoint_classifier(pre_processed_landmark_list)
+                if hand_sign_id == 2: # Assuming hand_sign_id 2 corresponds to a specific gesture for history
+                    point_history.append(landmark_list[8]) # Append index finger tip (landmark 8)
+                else:
+                    point_history.append([0, 0]) # Append dummy point if not the specific gesture
+
+                # Classify finger gesture (dynamic movement)
                 finger_gesture_id = 0
-                if len(pre_processed_point_history_list) == 32:
+                if len(pre_processed_point_history_list) == 32: # Check if history is full for classification
                     finger_gesture_id = point_history_classifier(pre_processed_point_history_list)
 
                 finger_gesture_history.append(finger_gesture_id)
@@ -236,37 +239,30 @@ def update_frame():
                 h, w, _ = debug_image.shape
                 thumb_px = int(thumb_tip.x * w), int(thumb_tip.y * h)
                 index_px = int(index_tip.x * w), int(index_tip.y * h)
-                
-                # Draw line and small box/circle between thumb and index
 
                 # Draw line and small circle between thumb and index finger tips
-
                 center_px = ((thumb_px[0] + index_px[0]) // 2, (thumb_px[1] + index_px[1]) // 2)
                 cv.line(debug_image, thumb_px, index_px, (255, 255, 255), 2)
                 cv.circle(debug_image, center_px, 10, (0, 255, 0), 2)
                 
-                # Calculate distance between thumb and index
+                # Calculate Euclidean distance between thumb and index tips
                 dist = ((thumb_tip.x - index_tip.x) ** 2 + (thumb_tip.y - index_tip.y) ** 2) ** 0.5
 
-                # Normalize distance (tune min/max based on your hand size/camera)
-                dist = ((thumb_tip.x - index_tip.x) ** 2 + (thumb_tip.y - index_tip.y) ** 2) ** 0.5
-                min_dist, max_dist = 0.02, 0.20 
-                clamped_dist = max(min(dist, max_dist), min_dist)
+                # Detect pinch based on distance threshold
+                is_pinch = dist < 0.07 # Threshold for pinch detection
 
-                # Detect pinch
-                is_pinch = dist < 0.07  
-                label = handedness.classification[0].label
-                # ✋ LEFT HAND — Mute toggle
-                if label == "Left":
+                # Left Hand: Mute/Unmute Toggle
+                if hand_label == "Left":
                     if is_pinch and not left_hand_pinch_state:
                         is_muted = not is_muted
-                        pygame.mixer.music.set_volume(0.0 if is_muted else volume_level / 100.0)
-                        left_hand_pinch_state = True
+                        pygame.mixer.music.set_volume(0.0 if is_muted else last_volume_level / 100.0)
+                        app_logger.info(f"Mute Toggled: {'Muted' if is_muted else 'Unmuted'}")
+                        left_hand_pinch_state = True  # Set state to true to avoid multiple toggles
                     elif not is_pinch:
-                        left_hand_pinch_state = False
-                    cv.circle(debug_image, center_px, 10, (255, 255, 0), 3)
-                    if is_muted:
-                        cv.putText(debug_image, "Muted", (debug_image.shape[1] - 50, 15), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 0, cv.LINE_AA)
+                        left_hand_pinch_state = False # Reset state when pinch is released
+
+                    cv.circle(debug_image, center_px, 15, (255, 255, 0), 3) # Yellow circle for left hand
+
                 # Right Hand: Volume Control
                 elif hand_label == "Right":
                     if is_pinch:
@@ -282,33 +278,33 @@ def update_frame():
                             if not is_muted:
                                 pygame.mixer.music.set_volume(last_volume_level / 100.0)
                             app_logger.debug(f"Volume: {last_volume_level}%")
-                        pinch_start_x = center_px[0]  # Update for next frame's delta calculation 
-                        pygame.mixer.music.set_volume(volume_level / 100.0)
+                        pinch_start_x = center_px[0]  # Update for next frame's delta calculation
+
+                        # Draw volume bar on debug image
                         bar_x, bar_y = 10, 85
                         bar_width, bar_height = 150, 10
-                        filled_width = int(bar_width * (volume_level / 100))
-                        cv.rectangle(debug_image, (bar_x, bar_y), (bar_x + bar_width, bar_y + bar_height), (50, 50, 50), -1)
-                        cv.rectangle(debug_image, (bar_x, bar_y), (bar_x + filled_width, bar_y + bar_height), (0, 255, 0), -1)
-                        cv.putText(debug_image, f"Volume: {volume_level}%", (bar_x, bar_y - 10),
-                        cv.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv.LINE_AA)
-                        # print("Volume Level (0-100):", volume_level)
+                        filled_width = int(bar_width * (last_volume_level / 100))
+                        cv.rectangle(debug_image, (bar_x, bar_y), (bar_x + bar_width, bar_y + bar_height), (50, 50, 50), -1) # Background
+                        cv.rectangle(debug_image, (bar_x, bar_y), (bar_x + filled_width, bar_y + bar_height), (0, 255, 0), -1) # Foreground
+                        cv.putText(debug_image, f"Volume: {last_volume_level}%", (bar_x, bar_y - 10),
+                                   cv.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv.LINE_AA)
                     else:
-                        cv.circle(debug_image, center_px, 15, (0, 0, 255), 2)
-                        pinch_mode = False
+                        cv.circle(debug_image, center_px, 15, (0, 0, 255), 2) # Blue circle when not pinching
+                        pinch_mode = False # Reset pinch mode when pinch is released
 
+                # Finger Counting Logic
                 finger_count = 0
-
-                #Thumb
-                if (hand_label == "Left" and hand_landmarks_xy[4][0] > hand_landmarks_xy[3][0]) or (hand_label == "Right" and hand_landmarks_xy[4][0] < hand_landmarks_xy[3][0]):
+                # Thumb (landmark 4 vs 3): Check horizontal position relative to its base
+                if (hand_label == "Left" and hand_landmarks_xy[4][0] > hand_landmarks_xy[3][0]) or \
+                   (hand_label == "Right" and hand_landmarks_xy[4][0] < hand_landmarks_xy[3][0]):
                     finger_count += 1
-
-                #Other fingers
+                # Other fingers (tips vs PIP joints): Check vertical position
                 for tip, pip in [(8, 6), (12, 10), (16, 14), (20, 18)]:
                     if hand_landmarks_xy[tip][1] < hand_landmarks_xy[pip][1]:
                         finger_count += 1
+                total_finger_count += finger_count # Accumulate finger count from all hands
 
-                total_finger_count += finger_count
-
+                # Log detected hand info to the UI
                 app_logger.info(f"Hand: {hand_label}, Fingers: {finger_count}, Sign: {keypoint_classifier_labels[hand_sign_id]}, Gesture: {point_history_classifier_labels[most_common_fg_id[0][0]]}")
 
                 # Draw annotations on the debug image
@@ -322,22 +318,6 @@ def update_frame():
                     point_history_classifier_labels[most_common_fg_id[0][0]],
                     finger_count,
                 )
-
-    debug_image = draw_point_history(debug_image, point_history)
-    fps = int(1 / max(0.01, time.time() - frame_start_time))
-    debug_image = draw_info(debug_image, fps, 0, 0)
-
-    img = Image.fromarray(cv.cvtColor(debug_image, cv.COLOR_BGR2RGB))
-    frame_width = 1280
-    frame_height = 720
-    resized_img = img.resize((frame_width, frame_height))  # PIL resize
-    imgtk = ImageTk.PhotoImage(image=resized_img)
-    video_label.imgtk = imgtk
-    video_label.configure(image=imgtk)
-
-    status_label.configure(text=f"Status: Running ({int(time.time() - start_time)}s)")
-    video_label.after(10, update_frame)
-
                 
                 # Play sound based on total finger count
                 if total_finger_count in sounds_mapping:
@@ -362,22 +342,19 @@ def update_frame():
         error_info = traceback.format_exc()
         app_logger.error(f"Error processing frame: {e}\n{error_info}") # Log detailed error to UI
 
-
-
+    # Draw point history and FPS on the debug image
     debug_image = draw_point_history(debug_image, point_history)
-    fps = int(1 / max(0.01, time.time() - frame_start_time))
+    fps = int(1 / max(0.01, time.time() - frame_start_time)) # Calculate FPS, avoid division by zero
     debug_image = draw_info(debug_image, fps, 0, 0)
 
+    # Convert OpenCV image to PhotoImage for CustomTkinter display
     img = Image.fromarray(cv.cvtColor(debug_image, cv.COLOR_BGR2RGB))
-    frame_width = 1280
-    frame_height = 720
-    resized_img = img.resize((frame_width, frame_height))  # PIL resize
-    imgtk = ImageTk.PhotoImage(image=resized_img)
-    video_label.imgtk = imgtk
+    imgtk = ImageTk.PhotoImage(image=img)
+    video_label.imgtk = imgtk # Keep a reference to prevent garbage collection
     video_label.configure(image=imgtk)
 
     status_label.configure(text=f"Status: Running ({int(time.time() - start_time)}s)")
-    video_label.after(10, update_frame)
+    video_label.after(10, update_frame) # Schedule the next frame update
 
 # === UI Setup with customtkinter ===
 app = ctk.CTk()

@@ -1,6 +1,5 @@
 # customTkinter.v2.py
 
-# Library imports
 import sys
 import csv
 import copy
@@ -9,13 +8,17 @@ import cv2 as cv
 import mediapipe as mp
 from PIL import Image, ImageTk
 import time
+import math
 import subprocess
 import pygame
 import numpy as np
 import customtkinter as ctk #type: ignore
-pygame.mixer.init()
+try:
+    pygame.mixer.init()
+except pygame.error as e:
+    print(f"Warning: Could not initialize mixer: {e}")
 
-# Model util imports
+# Model imports
 from model import KeyPointClassifier, PointHistoryClassifier
 from utils.calculate import calc_bounding_rect, calc_landmark_list
 from utils.pre_process import pre_process_landmark, pre_process_point_history
