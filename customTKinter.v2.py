@@ -23,7 +23,7 @@ from utils.log import logging_csv,logging
 from utils.draw import draw_info_text, draw_bounding_rect, draw_point_history, draw_info, draw_landmarks
 
 #incremental logs
-# log_file = logging()
+log_file = logging()
 
 # CustomTkinter setup
 ctk.set_appearance_mode("dark")
@@ -72,13 +72,13 @@ def refresh():
     app.destroy()
     subprocess.Popen([sys.executable, 'customTkinter.v2.py'])
     print("GUI refreshed (customTkinter.v2.py restarted)")
-    # log_file.close()
+    log_file.close()
 
 def quit_app():
     stop_camera()
     app.destroy()
     print("GUI closed")
-    # log_file.close()
+    log_file.close()
 
 def update_timer():
     if running:
@@ -223,6 +223,8 @@ def update_frame():
                         finger_count += 1
 
                 total_finger_count += finger_count
+                
+                print(f"Hand: {hand_label}, Finger Count: {total_finger_count}, Hand Sign ID: {hand_sign_id}, Gesture ID: {most_common_fg_id[0][0]}")
 
                 debug_image = draw_bounding_rect(True, debug_image, brect)
                 debug_image = draw_landmarks(debug_image, landmark_list)
@@ -234,6 +236,7 @@ def update_frame():
                     point_history_classifier_labels[most_common_fg_id[0][0]],
                     finger_count,
                 )
+               
 
                 # Play sound based on finger count
                 if total_finger_count in sounds_mapping:
