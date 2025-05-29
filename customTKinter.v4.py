@@ -6,10 +6,8 @@ import cv2 as cv
 import mediapipe as mp
 from PIL import Image, ImageTk
 import time
-import math
 import subprocess
 import pygame
-import numpy as np
 import customtkinter as ctk #type: ignore
 import logging # Import standard logging module
 
@@ -22,7 +20,7 @@ except pygame.error as e:
 from model import KeyPointClassifier, PointHistoryClassifier
 from utils.calculate import calc_bounding_rect, calc_landmark_list
 from utils.pre_process import pre_process_landmark, pre_process_point_history
-from utils.log import logging_csv,logging as custom_logging # Renamed to avoid conflict with standard logging
+from utils.log import logging as custom_logging # Renamed to avoid conflict with standard logging
 from utils.draw import draw_info_text, draw_bounding_rect, draw_point_history, draw_info, draw_landmarks
 
 # Incremental logs (from your custom logging module)
@@ -72,84 +70,52 @@ finger_gesture_history = deque(maxlen=16)
 
 # --- Custom logging handler for CTkTextbox ---
 class CTkTextboxHandler(logging.Handler):
-    """
-    A custom logging handler that directs log messages to a CTkTextbox widget.
-    It also supports colored output based on log level and limits the number of lines.
-    """
     def __init__(self, textbox_widget):
         super().__init__()
         self.textbox = textbox_widget
-        # Configure tags for different log levels for colored output
-        # Removed 'font' option as it's not supported by CTkTextbox tag_config
         self.textbox.tag_config("INFO", foreground="white")
         self.textbox.tag_config("WARNING", foreground="yellow")
         self.textbox.tag_config("ERROR", foreground="red")
-        self.textbox.tag_config("CRITICAL", foreground="red") # Removed font here
+        self.textbox.tag_config("CRITICAL", foreground="red") 
         self.textbox.tag_config("DEBUG", foreground="gray")
 
     def emit(self, record):
-        """
-        Emits a log record. This method is called by the logging system.
-        Schedules the actual text insertion on the Tkinter main thread.
-        """
         msg = self.format(record)
-        # Use app.after() to ensure thread safety and smooth UI updates.
-        # This is crucial if logging from a different thread, but good practice even on main thread.
         self.textbox.after(0, self._insert_log, msg + "\n", record.levelname)
 
     def _insert_log(self, msg, levelname):
-        """
-        Inserts the log message into the CTkTextbox and manages line limits.
-        """
-        max_lines = 100 # Limit the number of lines to prevent performance issues with huge logs
-        # Check current line count and delete oldest line if limit is exceeded
+        max_lines = 100 
         if int(self.textbox.index('end-1c').split('.')[0]) > max_lines:
-            self.textbox.delete(1.0, 2.0) # Delete the oldest line (line 1, column 0 to line 2, column 0)
+            self.textbox.delete(1.0, 2.0) 
 
         # Insert the new message at the end, applying a tag for coloring
         self.textbox.insert("end", msg, levelname.upper())
         # Automatically scroll to the end to show the latest messages
         self.textbox.see("end")
 
-# --- Global logger instance for the application ---
-# This logger will send messages to both the console (if a default handler is present)
-# and our custom CTkTextboxHandler.
 app_logger = logging.getLogger(__name__)
-app_logger.setLevel(logging.INFO) # Set the minimum logging level to INFO (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+app_logger.setLevel(logging.INFO) 
 
 def refresh():
-    """
-    Stops the camera, destroys the current app, and restarts the script
-    to refresh the GUI.
-    """
     stop_camera()
     app.destroy()
-    subprocess.Popen([sys.executable, 'customTkinter.v2.py'])
-    app_logger.info("GUI refreshed (customTkinter.v2.py restarted)")
+    subprocess.Popen([sys.executable, 'customTkinter.v4.py'])
+    app_logger.info("GUI refreshed (customTkinter.v4.py restarted)")
     log_file.close() # Close the custom log file
 
 def quit_app():
-    """
-    Stops the camera, destroys the current app, and exits the application.
-    """
     stop_camera()
     app.destroy()
     app_logger.info("GUI closed")
     log_file.close() # Close the custom log file
 
 def update_timer():
-    """
-    Updates the status label with the elapsed time since the camera started.
-    """
     if running:
         elapsed = int(time.time() - start_time)
         status_label.configure(text=f"Status: Running ({elapsed}s)")
         app.after(1000, update_timer) # Schedule next update after 1 second
 
 def start_camera():
-    """
-    Initializes and starts the webcam feed.
-    """
     global running, cap, start_time
     if running:
         app_logger.warning("Camera is already running.")
@@ -167,9 +133,6 @@ def start_camera():
     app_logger.info("Camera started.")
 
 def stop_camera():
-    """
-    Stops the webcam feed and releases camera resources.
-    """
     global running, cap
     if not running:
         app_logger.info("Camera is already stopped.")
@@ -182,10 +145,6 @@ def stop_camera():
     app_logger.info("Camera stopped.")
 
 def update_frame():
-    """
-    Captures a frame from the camera, processes it for hand gestures,
-    updates the UI, and schedules the next frame update.
-    """
     if not running or not cap:
         return
 
@@ -262,7 +221,8 @@ def update_frame():
                         left_hand_pinch_state = False # Reset state when pinch is released
 
                     cv.circle(debug_image, center_px, 15, (255, 255, 0), 3) # Yellow circle for left hand
-
+                    if is_muted:
+                        cv.putText(debug_image, "Muted", (debug_image.shape[1] - 50, 15), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 0, cv.LINE_AA)
                 # Right Hand: Volume Control
                 elif hand_label == "Right":
                     if is_pinch:
@@ -349,9 +309,13 @@ def update_frame():
 
     # Convert OpenCV image to PhotoImage for CustomTkinter display
     img = Image.fromarray(cv.cvtColor(debug_image, cv.COLOR_BGR2RGB))
-    imgtk = ImageTk.PhotoImage(image=img)
-    video_label.imgtk = imgtk # Keep a reference to prevent garbage collection
+    frame_width = 720
+    frame_height = 480
+    resized_img = img.resize((frame_width, frame_height))  # PIL resize
+    imgtk = ImageTk.PhotoImage(image=resized_img)
+    video_label.imgtk = imgtk
     video_label.configure(image=imgtk)
+
 
     status_label.configure(text=f"Status: Running ({int(time.time() - start_time)}s)")
     video_label.after(10, update_frame) # Schedule the next frame update
@@ -359,7 +323,7 @@ def update_frame():
 # === UI Setup with customtkinter ===
 app = ctk.CTk()
 app.title("🤖 Hand Gesture Recognition")
-app.geometry("1000x800")
+app.geometry("1200x900")
 
 title = ctk.CTkLabel(app, text="🤖 Hand Gesture Controller", font=("Segoe UI", 26, "bold"))
 title.pack(pady=20)
@@ -383,12 +347,6 @@ log_handler = CTkTextboxHandler(log_textbox)
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 log_handler.setFormatter(formatter)
 app_logger.addHandler(log_handler) # Add our custom handler to the application logger
-
-# You can also add a StreamHandler to see logs in the console simultaneously if needed:
-# console_handler = logging.StreamHandler(sys.stdout)
-# console_handler.setFormatter(formatter)
-# app_logger.addHandler(console_handler)
-
 
 button_frame = ctk.CTkFrame(app, fg_color="#2B2A45")
 button_frame.pack(pady=20) # Pack below the log area
