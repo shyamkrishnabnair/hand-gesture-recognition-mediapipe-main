@@ -1,16 +1,12 @@
-#cusotmTkinter.v6.py
-import sys
-import io
-import csv
-import copy
+#customTkinter.v6.py
+import sys, csv, copy, time, subprocess, logging
 from collections import Counter, deque
 import cv2 as cv
+cv.setUseOptimized(True)
+cv.setNumThreads(2)
 import mediapipe as mp
 from PIL import Image, ImageTk
-import time
-import subprocess
 import customtkinter as ctk
-import logging # Import standard logging module
 
 # Model imports
 from model import KeyPointClassifier, PointHistoryClassifier
@@ -18,8 +14,7 @@ from utils.calculate import calc_bounding_rect, calc_landmark_list
 from utils.pre_process import pre_process_landmark, pre_process_point_history
 from utils.log import logging as custom_logging
 from utils.draw import draw_info_text, draw_bounding_rect, draw_point_history, draw_info, draw_landmarks
-from utils import MidiSoundPlayer
-from utils import CTkTextboxHandler
+from utils import MidiSoundPlayer, CTkTextboxHandler
 
 # Incremental logs (from your custom logging module)
 log_file = custom_logging()
@@ -36,8 +31,7 @@ ctk.set_default_color_theme("dark-blue")
 
 # Mediapipe setup
 mp_hands = mp.solutions.hands
-hands = mp_hands.Hands(static_image_mode=False, max_num_hands=2,
-                        min_detection_confidence=0.7, min_tracking_confidence=0.5)
+hands = mp_hands.Hands(static_image_mode=False, max_num_hands=2, min_detection_confidence=0.7, min_tracking_confidence=0.5)
 
 # Global vars
 running = False
@@ -56,7 +50,7 @@ left_hand_pinch_state = False
 current_instrument_index = 0
 instrument_scroll_mode = False
 instrument_scroll_start_x = 0
-video_label = None  # placeholder globally
+video_label = None  # placeholder globally 
 note_mapping = {
     1: 60,  # C4
     2: 62,  # D4
@@ -71,31 +65,28 @@ note_mapping = {
 }
 instrument_ids = [0, 1, 4, 6, 16, 24, 29, 33, 40, 48, 56, 65, 73, 80, 88]
 instrument_names = [
-    "Acoustic Grand Piano", "Bright Piano", "Electric Piano", "Harpsichord",
-    "Drawbar Organ", "Acoustic Guitar", "Overdriven Guitar", "Bass Guitar",
-    "Violin", "String Ensemble", "Trumpet", "Saxophone", "Flute", "Synth Lead", "Synth Pad"
+    "Acoustic Grand Piano 🎹", "Bright Piano 🎹", "Electric Piano 🎹", "Harpsichord 🎹", "Drawbar Organ 🎹", "Acoustic Guitar 🎸", "Overdriven Guitar 🎸", "Bass Guitar 🎸", "Violin 🎻", "String Ensemble 🎻", "Trumpet 🎺", "Saxophone 🎷", "Flute 🎶", "Synth Lead 🎹", "Synth Pad 🎹"
 ]
 
 # Initialize MIDI sound player (no need for .sf2 or external tools)
 player = MidiSoundPlayer()
 player.set_instrument(0)  # Acoustic Grand Piano
 
-
 app_logger = logging.getLogger(__name__)
-app_logger.setLevel(logging.INFO) 
+app_logger.setLevel(logging.INFO)
 
 def refresh():
     stop_camera()
     app.destroy()
     subprocess.Popen([sys.executable, 'customTkinter.v6.py'])
     app_logger.info("GUI refreshed (customTkinter.v6.py restarted)")
-    log_file.close() # Close the custom log file
+    log_file.close()
 
 def quit_app():
     stop_camera()
     app.destroy()
     app_logger.info("GUI closed")
-    log_file.close() # Close the custom log file
+    log_file.close()
 
 def update_timer():
     if running:
@@ -127,10 +118,15 @@ def stop_camera():
         return
     running = False
     if cap:
-        cap.release() # Release the camera resource
+        cap.release()
         cap = None
     status_label.configure(text="Status: Stopped")
     app_logger.info("Camera stopped.")
+
+def toggle_mute():
+    player.muted = not player.muted
+    mute_btn.configure(text="Unmute" if player.muted else "Mute")
+    app_logger.info("Muted" if player.muted else "Unmuted")
 
 def update_frame():
     if not running or not cap:
@@ -141,11 +137,9 @@ def update_frame():
     ret, image = cap.read()
     if not ret:
         app_logger.error("Failed to read frame from camera.")
-        # Optionally, stop camera if frame read fails repeatedly
-        # stop_camera()
         return
 
-    image = cv.flip(image, 1) # Flip horizontally for mirror effect
+    image = cv.flip(image, 1) 
     debug_image = copy.deepcopy(image) # Create a copy for drawing annotations
     image = cv.cvtColor(image, cv.COLOR_BGR2RGB) # Convert to RGB for MediaPipe
     results = hands.process(image) # Process the image for hand landmarks
@@ -174,7 +168,6 @@ def update_frame():
                 finger_gesture_history.append(finger_gesture_id)
                 most_common_fg_id = Counter(finger_gesture_history).most_common()
 
-                # === FINGER COUNT & VOLUME/MUTE LOGIC ===
                 global last_volume_level, pinch_mode, pinch_start_x, is_muted, left_hand_pinch_state
                 
                 hand_label = handedness.classification[0].label # "Left" or "Right"
@@ -234,7 +227,6 @@ def update_frame():
                                 instrument_scroll_start_x = center_px[0] 
                     else:
                         instrument_scroll_mode = False
-                        # left_muted_state_handled = False
                         
                 # Right Hand: Volume Control
                 elif hand_label == "Right":
@@ -275,10 +267,12 @@ def update_frame():
                                    cv.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv.LINE_AA)
                     else:
                         cv.circle(debug_image, center_px, 15, (0, 0, 255), 2) # Blue circle when not pinching
-                        pinch_mode = False # Reset pinch mode when pinch is released
+                        pinch_mode = False # Reset pinch mode 
                 
                 if player.volume < 0.01 or player.muted:
                     cv.putText(debug_image, "Muted", (debug_image.shape[1] - 50, 15), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 0, cv.LINE_AA)
+                    mute_btn.configure(text="Unmute" if player.muted else "Mute")
+                    app_logger.info("Muted" if player.muted else "Unmuted")
 
                 # Finger Counting Logic
                 finger_count = 0
@@ -351,7 +345,7 @@ def update_frame():
     status_label.configure(text=f"Status: Running ({int(time.time() - start_time)}s)")
     video_label.after(10, update_frame) # Schedule the next frame update
 
-# === UI Setup with customtkinter ===
+
 app = ctk.CTk()
 app.title("🤖 Hand Gesture Recognition")
 app.geometry("1200x900")
@@ -367,14 +361,9 @@ main_frame.pack(fill="both", expand=True, padx=20, pady=10)
 
 # Left control panel
 left_panel = ctk.CTkFrame(main_frame, width=120)
-def toggle_mute():
-    player.muted = not player.muted
-    mute_btn.configure(text="Unmute" if player.muted else "Mute")
-    app_logger.info("Muted" if player.muted else "Unmuted")
 mute_btn = ctk.CTkButton(left_panel, text="Mute", command=toggle_mute)
-mute_btn.pack(pady=20)
+mute_btn.pack(pady=20, padx=10)
 left_panel.pack_propagate(False)  # Prevent it from resizing to contents
-# mute_btn.pack(pady=20, padx=10, anchor="n")  # Align top
 left_panel.pack(side="left", fill="y", padx=(0, 10))
 
 # Center for camera
