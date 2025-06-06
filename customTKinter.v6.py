@@ -1,5 +1,6 @@
 #cusotmTkinter.v6.py
 import sys
+import io
 import csv
 import copy
 from collections import Counter, deque
@@ -52,6 +53,10 @@ last_volume_level = 50
 is_muted = False
 pinch_start_x = 0
 left_hand_pinch_state = False
+current_instrument_index = 0
+instrument_scroll_mode = False
+instrument_scroll_start_x = 0
+video_label = None  # placeholder globally
 note_mapping = {
     1: 60,  # C4
     2: 62,  # D4
@@ -64,6 +69,13 @@ note_mapping = {
     9: 74,  # D5
     10: 76  # E5
 }
+instrument_ids = [0, 1, 4, 6, 16, 24, 29, 33, 40, 48, 56, 65, 73, 80, 88]
+instrument_names = [
+    "Acoustic Grand Piano", "Bright Piano", "Electric Piano", "Harpsichord",
+    "Drawbar Organ", "Acoustic Guitar", "Overdriven Guitar", "Bass Guitar",
+    "Violin", "String Ensemble", "Trumpet", "Saxophone", "Flute", "Synth Lead", "Synth Pad"
+]
+
 # Initialize MIDI sound player (no need for .sf2 or external tools)
 player = MidiSoundPlayer()
 player.set_instrument(0)  # Acoustic Grand Piano
@@ -186,48 +198,43 @@ def update_frame():
                 # Detect pinch based on distance threshold
                 is_pinch = dist < 0.07 # Threshold for pinch detection
                 screen_width = debug_image.shape[1]
-                drag_threshold = screen_width * 0.10  # 10% of screen width
+                drag_threshold = screen_width * 0.2  # 20% of screen width
                 # Left Hand: Mute/Unmute Toggle
-
-                
-                # Init global state flags
-                if 'left_pinch_mode' not in globals():
-                    left_pinch_mode = False
-                    left_pinch_start_x = 0
-                    left_muted_state_handled = False
 
                 if 'pinch_mode' not in globals():
                     pinch_mode = False
                     pinch_start_x = 0
 
+                global instrument_scroll_mode, instrument_scroll_start_x, instrument_ids, instrument_names, current_instrument_index
+                cv.putText(debug_image, f"Instrument: {instrument_names[current_instrument_index]}", (10, 40), cv.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2, cv.LINE_AA)
+                
                 if hand_label == "Left":
                     if is_pinch:
+                        cv.putText(debug_image, f"Instrument: {instrument_names[current_instrument_index]}", (10, 40), cv.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2, cv.LINE_AA)
+
                         cv.circle(debug_image, center_px, 15, (255, 255, 0), 3)  # Yellow for left hand
-                        if not left_pinch_mode:
-                            left_pinch_mode = True
-                            left_pinch_start_x = center_px[0]
-                            left_muted_state_handled = False
+                        if not instrument_scroll_mode:
+                            instrument_scroll_mode = True
+                            instrument_scroll_start_x = center_px[0]
                         else:
-                            delta_x = center_px[0] - left_pinch_start_x
-                            if not left_muted_state_handled:
-                                if delta_x >= drag_threshold:
-                                    player.muted = True
-                                    app_logger.info("Muted")
-                                    left_muted_state_handled = True
-                                elif delta_x <= -drag_threshold:
-                                    player.muted = False
-                                    app_logger.info("Unmuted")
-                                    left_muted_state_handled = True
+                            print(f"Instrument scroll mode active, start X: {instrument_scroll_start_x}, center X: {center_px[0]}")
+                            delta_x = center_px[0] - instrument_scroll_start_x
 
-                        left_pinch_start_x = center_px[0]
+                            if abs(delta_x) >= drag_threshold:
+                                if delta_x > 0:
+                                    current_instrument_index = (current_instrument_index + 1) % len(instrument_ids)
+                                else:
+                                    current_instrument_index = (current_instrument_index - 1) % len(instrument_ids)
 
+                                new_instrument = instrument_ids[current_instrument_index]
+                                player.set_instrument(new_instrument)
+                                player.play_note(60, duration=0.9)  # C4 note for 0.9s 
+                                app_logger.info(f"Instrument: {instrument_names[current_instrument_index]}")
+                                instrument_label.configure(text=f"Instrument: {instrument_names[current_instrument_index]}")
+                                instrument_scroll_start_x = center_px[0] 
                     else:
-                        left_pinch_mode = False
-                        left_muted_state_handled = False
-
-                    if player.muted:
-                        cv.putText(debug_image, "Muted", (debug_image.shape[1] - 50, 15), cv.FONT_HERSHEY_SIMPLEX,
-                         0.5, (0, 0, 255), 0, cv.LINE_AA)
+                        instrument_scroll_mode = False
+                        # left_muted_state_handled = False
                         
                 # Right Hand: Volume Control
                 elif hand_label == "Right":
@@ -240,19 +247,20 @@ def update_frame():
                         else:
                             if not player.muted:
                                 delta_x = center_px[0] - pinch_start_x
+                                if abs(delta_x) > drag_threshold/20:
 
-                                # Volume sensitivity (drag 1% screen = 1 step)
-                                volume_delta = delta_x / (screen_width * 0.01)
-                                volume_delta = max(-10, min(10, volume_delta))  # Cap delta for control
+                                    # Volume sensitivity (drag 1% screen = 1 step)
+                                    volume_delta = delta_x / (screen_width * 0.01)
+                                    volume_delta = max(-10, min(10, volume_delta))  # Cap delta for control
 
-                                # Apply new volume
-                                new_volume = player.volume + (volume_delta / 100)
-                                player.volume = max(0.0, min(1.0, new_volume))
+                                    # Apply new volume
+                                    new_volume = player.volume + (volume_delta / 100)
+                                    player.volume = max(0.0, min(1.0, new_volume))
 
-                                # Sync last_volume_level with current MIDI player volume
-                                last_volume_level = int(player.volume * 100)
+                                    # Sync last_volume_level with current MIDI player volume
+                                    last_volume_level = int(player.volume * 100)
 
-                                app_logger.debug(f"Volume: {last_volume_level}%")
+                                    app_logger.debug(f"Volume: {last_volume_level}%")
 
                             # Always update start position for next drag, even if muted
                             pinch_start_x = center_px[0]
@@ -268,6 +276,9 @@ def update_frame():
                     else:
                         cv.circle(debug_image, center_px, 15, (0, 0, 255), 2) # Blue circle when not pinching
                         pinch_mode = False # Reset pinch mode when pinch is released
+                
+                if player.volume < 0.01 or player.muted:
+                    cv.putText(debug_image, "Muted", (debug_image.shape[1] - 50, 15), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 0, cv.LINE_AA)
 
                 # Finger Counting Logic
                 finger_count = 0
@@ -306,7 +317,7 @@ def update_frame():
                     note = note_mapping[total_finger_count]
                     try:
                         player.play_note(note, duration=10)
-                        print(f"🎵 Playing MIDI note: {note} for finger count: {total_finger_count}")
+                        print(f"Playing MIDI note: {note} for finger count: {total_finger_count}")
                         last_finger_count = total_finger_count
                         last_note_time = current_time
                     except Exception as e:
@@ -331,11 +342,12 @@ def update_frame():
     frame_width = 720
     frame_height = 480
     resized_img = img.resize((frame_width, frame_height))  # PIL resize
+
+    global video_label
     imgtk = ImageTk.PhotoImage(image=resized_img)
     video_label.imgtk = imgtk
     video_label.configure(image=imgtk)
-
-
+    
     status_label.configure(text=f"Status: Running ({int(time.time() - start_time)}s)")
     video_label.after(10, update_frame) # Schedule the next frame update
 
@@ -347,8 +359,33 @@ app.geometry("1200x900")
 title = ctk.CTkLabel(app, text="🤖 Hand Gesture Controller", font=("Segoe UI", 26, "bold"))
 title.pack(pady=20)
 
-video_label = ctk.CTkLabel(app, text="")
+instrument_label = ctk.CTkLabel(app, text="Instrument: Acoustic Grand Piano", font=("Segoe UI", 18))
+instrument_label.pack(pady=5)
+
+main_frame = ctk.CTkFrame(app)
+main_frame.pack(fill="both", expand=True, padx=20, pady=10)
+
+# Left control panel
+left_panel = ctk.CTkFrame(main_frame, width=120)
+def toggle_mute():
+    player.muted = not player.muted
+    mute_btn.configure(text="Unmute" if player.muted else "Mute")
+    app_logger.info("Muted" if player.muted else "Unmuted")
+mute_btn = ctk.CTkButton(left_panel, text="Mute", command=toggle_mute)
+mute_btn.pack(pady=20)
+left_panel.pack_propagate(False)  # Prevent it from resizing to contents
+# mute_btn.pack(pady=20, padx=10, anchor="n")  # Align top
+left_panel.pack(side="left", fill="y", padx=(0, 10))
+
+# Center for camera
+center_panel = ctk.CTkFrame(main_frame)
+video_label = ctk.CTkLabel(center_panel, text="")
 video_label.pack(padx=20, pady=10, fill="both", expand=True)
+center_panel.pack(side="left", expand=True)
+
+# Right panel (for future)
+right_panel = ctk.CTkFrame(main_frame, width=120)
+right_panel.pack(side="left", fill="y", padx=(10, 0))
 
 # --- Add a logging area to the UI ---
 log_frame = ctk.CTkFrame(app, fg_color="transparent")
@@ -386,13 +423,9 @@ status_label = ctk.CTkLabel(app, text="Status: Idle", font=("Segoe UI", 14))
 status_label.pack(pady=10)
 
 def on_close():
-    """
-    Handles the window close event, ensuring camera is stopped and resources are released.
-    """
     stop_camera()
     player.stop()
     app.destroy()
-    # Attempt to close your custom log_file if it's a file handle
     try:
         if log_file:
             log_file.close()
