@@ -5,7 +5,6 @@ from .pre_process import pre_process_landmark, pre_process_point_history
 from .log import logging_csv, logging
 from .draw import draw_info_text, draw_bounding_rect, draw_point_history, draw_info, draw_landmarks
 from .midisoundplayer import MidiSoundPlayer
-from .ctktestboxhandler import CTkTextboxHandler
 
 __all__ = [
     "select_mode",
@@ -21,6 +20,5 @@ __all__ = [
     "draw_point_history",
     "draw_info",
     "draw_landmarks",
-    "MidiSoundPlayer",
-    "CTkTextboxHandler"
+    "MidiSoundPlayer"
 ]
