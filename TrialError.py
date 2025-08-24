@@ -10,6 +10,7 @@ import subprocess
 import pygame
 import customtkinter as ctk #type: ignore
 import logging # Import standard logging module
+from notation_panel import NotationPanel
 
 try:
     pygame.mixer.init()
@@ -365,6 +366,14 @@ exit_btn.grid(row=1, column=1, padx=10, pady=10)
 
 status_label = ctk.CTkLabel(app, text="Status: Idle", font=("Segoe UI", 14))
 status_label.pack(pady=10)
+
+
+
+# Create frame + panel
+notation_frame = ctk.CTkFrame(app, fg_color="black")
+notation_frame.pack(padx=20, pady=10, fill="x")
+notation_panel = NotationPanel(notation_frame)
+
 
 def on_close():
     """
