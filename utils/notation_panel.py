@@ -5,7 +5,7 @@ class NotationPanel:
         self.canvas = ctk.CTkCanvas(
             parent, width=width, height=height, bg="black", highlightthickness=0
         )
-        self.canvas.pack(fill="x", expand=True)
+        self.canvas.pack(fill="both", expand=True)
 
         self.scroll_speed = scroll_speed
         self.events = []   # stores canvas text IDs
@@ -23,7 +23,15 @@ class NotationPanel:
         for i in range(5):
             y = margin_top + i * spacing
             self.staff_y_positions.append(y)
-            self.canvas.create_line(0, y, width, y, fill="white")
+
+        # Store line IDs for dynamic resizing
+        self.staff_lines = []
+
+        # Draw initial staff lines
+        self.draw_staff_lines()
+
+        # Bind resize event to redraw lines
+        self.canvas.bind("<Configure>", self.draw_staff_lines)
 
         # Map finger counts to staff positions
         self.note_positions = {
@@ -42,8 +50,20 @@ class NotationPanel:
         # Start scrolling loop
         self.scroll()
 
+    def draw_staff_lines(self, event=None):
+        """Draw or redraw staff lines to match canvas width."""
+        # Clear old lines
+        for line_id in self.staff_lines:
+            self.canvas.delete(line_id)
+        self.staff_lines.clear()
+
+        canvas_width = self.canvas.winfo_width() or 1
+        for y in self.staff_y_positions:
+            line_id = self.canvas.create_line(0, y, canvas_width, y, fill="white")
+            self.staff_lines.append(line_id)
+
     def add_gesture(self, gesture_id: int):
-        """Draw a new note for a gesture"""
+        """Draw a new note for a gesture."""
         symbol = self.symbols.get(gesture_id, "?")
         x = self.canvas.winfo_width() - 20
         y = self.note_positions.get(gesture_id, self.staff_y_positions[2])
@@ -54,7 +74,7 @@ class NotationPanel:
         self.events.append(text_id)
 
     def scroll(self):
-        """Continuously move notes left"""
+        """Continuously move notes left."""
         for item in self.events:
             self.canvas.move(item, -self.scroll_speed, 0)
 

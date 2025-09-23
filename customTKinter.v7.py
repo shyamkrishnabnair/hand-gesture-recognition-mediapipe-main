@@ -1,4 +1,4 @@
-#customTkinter.v6.py
+#customTkinter.v7.py
 import sys, csv, copy, time, subprocess, logging
 from collections import Counter, deque
 import cv2 as cv
@@ -15,6 +15,7 @@ from utils.pre_process import pre_process_landmark, pre_process_point_history
 from utils.log import logging as custom_logging
 from utils.draw import draw_info_text, draw_bounding_rect, draw_point_history, draw_info, draw_landmarks
 from utils import MidiSoundPlayer, CTkTextboxHandler
+from utils import NotationPanel
 
 # Incremental logs (from your custom logging module)
 log_file = custom_logging()
@@ -78,8 +79,8 @@ app_logger.setLevel(logging.INFO)
 def refresh():
     stop_camera()
     app.destroy()
-    subprocess.Popen([sys.executable, 'customTkinter.v6.py'])
-    app_logger.info("GUI refreshed (customTkinter.v6.py restarted)")
+    subprocess.Popen([sys.executable, 'customTkinter.v7.py'])
+    app_logger.info("GUI refreshed (customTkinter.v7.py restarted)")
     log_file.close()
 
 def quit_app():
@@ -312,6 +313,8 @@ def update_frame():
                     try:
                         player.play_note(note, duration=10)
                         print(f"Playing MIDI note: {note} for finger count: {total_finger_count}")
+                        notation_panel.add_gesture(total_finger_count)
+                        record_gesture(total_finger_count)
                         last_finger_count = total_finger_count
                         last_note_time = current_time
                     except Exception as e:
@@ -360,11 +363,31 @@ main_frame = ctk.CTkFrame(app)
 main_frame.pack(fill="both", expand=True, padx=20, pady=10)
 
 # Left control panel
-left_panel = ctk.CTkFrame(main_frame, width=120)
+left_panel = ctk.CTkFrame(main_frame, width=300)  # made wider so logs fit better
 mute_btn = ctk.CTkButton(left_panel, text="Mute", command=toggle_mute)
 mute_btn.pack(pady=20, padx=10)
-left_panel.pack_propagate(False)  # Prevent it from resizing to contents
+
+# --- Add a logging area to the left panel (second column after mute) ---
+log_frame = ctk.CTkFrame(left_panel, fg_color="transparent")
+log_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+
+log_label = ctk.CTkLabel(log_frame, text="Live Log:", font=("Segoe UI", 12, "bold"))
+log_label.pack(anchor="nw", padx=(0, 5), pady=(0, 5))
+
+log_textbox = ctk.CTkTextbox(
+    log_frame, width=260, height=400,  # adjust width/height to taste
+    activate_scrollbars=True, wrap="word", font=("Consolas", 10)
+)
+log_textbox.pack(fill="both", expand=True)
+
+left_panel.pack_propagate(False)
 left_panel.pack(side="left", fill="y", padx=(0, 10))
+
+# --- Configure the standard logging module ---
+log_handler = CTkTextboxHandler(log_textbox)
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+log_handler.setFormatter(formatter)
+app_logger.addHandler(log_handler)
 
 # Center for camera
 center_panel = ctk.CTkFrame(main_frame)
@@ -373,25 +396,123 @@ video_label.pack(padx=20, pady=10, fill="both", expand=True)
 center_panel.pack(side="left", expand=True)
 
 # Right panel (for future)
-right_panel = ctk.CTkFrame(main_frame, width=120)
+# right_panel = ctk.CTkFrame(main_frame, width=300)
+# right_panel.pack(side="left", fill="y", padx=(10, 0))
+right_panel = ctk.CTkFrame(main_frame, width=300)
 right_panel.pack(side="left", fill="y", padx=(10, 0))
+# --- Right Panel: Recording + Playback ---
+recording_label = ctk.CTkLabel(right_panel, text="🎵 Recording Panel", font=("Segoe UI", 16, "bold"))
+recording_label.pack(pady=10)
 
-# --- Add a logging area to the UI ---
-log_frame = ctk.CTkFrame(app, fg_color="transparent")
-log_frame.pack(padx=20, pady=10, fill="x", expand=False) # Pack above the buttons
+recording_status = ctk.CTkLabel(right_panel, text="Status: Idle", fg_color=None)
+recording_status.pack(pady=5)
 
-log_label = ctk.CTkLabel(log_frame, text="Live Log:", font=("Segoe UI", 12, "bold"))
-log_label.pack(side="left", padx=(0, 5), anchor="nw") # Label for the log area
+# Start / Stop Recording buttons
+def start_recording():
+    # Placeholder: append current finger events to a list
+    print("Recording started...")
+    recording_status.configure(text="🎵 Recording...")
+    right_panel.recording_data = []
 
-log_textbox = ctk.CTkTextbox(log_frame, width=900, height=150, activate_scrollbars=True, wrap="word", font=("Consolas", 10))
-log_textbox.pack(side="left", fill="x", expand=True) # The actual textbox for displaying logs
+def stop_recording():
+    # Placeholder: stop appending
+    print("Recording stopped. Captured", len(getattr(right_panel, 'recording_data', [])), "events")
+    recording_status.configure(text="Stopped. Captured {} events".format(len(right_panel.recording_data)))
 
-# --- Configure the standard logging module to output to the CTkTextbox ---
-log_handler = CTkTextboxHandler(log_textbox)
-# Define the format for log messages (timestamp - level - message)
-formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-log_handler.setFormatter(formatter)
-app_logger.addHandler(log_handler) # Add our custom handler to the application logger
+start_record_btn = ctk.CTkButton(right_panel, text="⏺ Start Recording", command=start_recording)
+start_record_btn.pack(pady=5, padx=10)
+
+stop_record_btn = ctk.CTkButton(right_panel, text="⏹ Stop Recording", command=stop_recording)
+stop_record_btn.pack(pady=5, padx=10)
+
+
+recordings_frame = ctk.CTkFrame(main_frame, width=150)
+recordings_frame.pack(side="left", fill="y", padx=(10, 0))
+
+recordings_label = ctk.CTkLabel(recordings_frame, text="Recordings", font=("Segoe UI", 14))
+recordings_label.pack(pady=5)
+
+recordings_listbox = ctk.CTkTextbox(recordings_frame, width=140, height=400)
+recordings_listbox.pack(padx=5, pady=5, fill="both", expand=True)
+
+def update_recording_list():
+    recordings_listbox.delete("1.0", "end")
+    for f in os.listdir(RECORDINGS_DIR):
+        if f.endswith(".json"):
+            recordings_listbox.insert("end", f + "\n")
+
+# save recordings
+import os, json
+
+RECORDINGS_DIR = "recordings"
+os.makedirs(RECORDINGS_DIR, exist_ok=True)
+
+def save_recording(name="recording1"):
+    data = getattr(right_panel, 'recording_data', [])
+    if not data:
+        return
+    path = os.path.join(RECORDINGS_DIR, f"{name}.json")
+    with open(path, "w") as f:
+        json.dump(data, f)
+    update_recording_list()
+
+
+# Playback button
+def playback_recording(index=0):
+    data = getattr(right_panel, 'recording_data', [])
+    if index >= len(data):
+        if getattr(right_panel, 'playback_loop', False):
+            playback_recording(0)  # restart from beginning
+        else:
+            recording_status.configure(text="Playback finished!")
+        return
+    
+    gesture_id = data[index]
+    player.play_note(note_mapping.get(gesture_id, 60), duration=10)
+    notation_panel.add_gesture(gesture_id)
+    
+    # Schedule next note after 200ms
+    right_panel.after(200, playback_recording, index + 1)
+
+playback_btn = ctk.CTkButton(right_panel, text="▶ Playback", command=playback_recording)
+playback_btn.pack(pady=10)
+
+right_panel.playback_loop = False  # initially off
+
+def toggle_loop():
+    right_panel.playback_loop = not right_panel.playback_loop
+    loop_btn.configure(text=f"Loop: {'ON' if right_panel.playback_loop else 'OFF'}")
+
+# Loop toggle button
+loop_btn = ctk.CTkButton(right_panel, text="Loop: OFF", command=toggle_loop)
+loop_btn.pack(pady=5, padx=10)
+
+
+def record_gesture(gesture_id):
+    if hasattr(right_panel, 'recording_data'):
+        right_panel.recording_data.append(gesture_id)
+
+# --- Add a logging area to the UI --- ((moved to left panel))
+# log_frame = ctk.CTkFrame(app, fg_color="transparent")
+# log_frame.pack(padx=20, pady=10, fill="x", expand=False) # Pack above the buttons
+
+# log_label = ctk.CTkLabel(log_frame, text="Live Log:", font=("Segoe UI", 12, "bold"))
+# log_label.pack(side="left", padx=(0, 5), anchor="nw") # Label for the log area
+
+# log_textbox = ctk.CTkTextbox(log_frame, width=900, height=150, activate_scrollbars=True, wrap="word", font=("Consolas", 10))
+# log_textbox.pack(side="left", fill="x", expand=True) # The actual textbox for displaying logs
+
+# # --- Configure the standard logging module to output to the CTkTextbox ---
+# log_handler = CTkTextboxHandler(log_textbox)
+# # Define the format for log messages (timestamp - level - message)
+# formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+# log_handler.setFormatter(formatter)
+# app_logger.addHandler(log_handler) # Add our custom handler to the application logger
+
+# --- Bottom area: Notation Panel ---
+notation_frame = ctk.CTkFrame(app, fg_color="black")
+notation_frame.pack(padx=20, pady=10, fill="x")
+notation_panel = NotationPanel(notation_frame)
 
 button_frame = ctk.CTkFrame(app, fg_color="#2B2A45")
 button_frame.pack(pady=20) # Pack below the log area
