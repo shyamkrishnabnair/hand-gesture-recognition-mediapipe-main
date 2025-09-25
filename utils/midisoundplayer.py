@@ -99,3 +99,23 @@ class MidiSoundPlayer:
 
         self.player.close()
         pygame.midi.quit()
+        
+    def handle_note_playing(finger_count, app_state):
+        current_time = time.time()
+
+        if (
+            finger_count in app_state.note_mapping and
+            (finger_count != app_state.last_finger_count or current_time - app_state.last_note_time > app_state.note_cooldown)
+        ):
+            note = app_state.note_mapping[finger_count]
+            velocity = random.randint(85, 100)  # 🎯 Realistic slight randomness
+
+            def play_note():
+                app_state.player.play_note(note, velocity=velocity, duration=1.2)
+                app_state.app_logger.debug(f"🎵 Playing note: {note} (velocity={velocity}) for finger count: {finger_count}")
+
+            # Fire note in thread
+            threading.Thread(target=play_note, daemon=True).start()
+
+            app_state.last_note_time = current_time
+            app_state.last_finger_count = finger_count
