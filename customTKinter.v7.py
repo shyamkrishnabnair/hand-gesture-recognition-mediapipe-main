@@ -425,7 +425,6 @@ start_record_btn.pack(pady=5, padx=10)
 stop_record_btn = ctk.CTkButton(right_panel, text="⏹ Stop Recording", command=stop_recording)
 stop_record_btn.pack(pady=5, padx=10)
 
-
 recordings_frame = ctk.CTkFrame(main_frame, width=150)
 recordings_frame.pack(side="left", fill="y", padx=(10, 0))
 
@@ -456,6 +455,8 @@ def save_recording(name="recording1"):
         json.dump(data, f)
     update_recording_list()
 
+stop_record_btn = ctk.CTkButton(right_panel, text="Save Recording", command=save_recording)
+stop_record_btn.pack(pady=5, padx=10)
 
 # Playback button
 def playback_recording(index=0):
