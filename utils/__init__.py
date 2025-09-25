@@ -13,6 +13,7 @@ from .frame_utils import (
     count_fingers, draw_debug_overlays
 )
 from .app_state import AppState
+from .notation_panel import NotationPanel
 
 __all__ = [
     "select_mode",
@@ -37,4 +38,5 @@ __all__ = [
     "count_fingers",
     "draw_debug_overlays",
     "AppState"
+    "NotationPanel"
 ]

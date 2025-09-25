@@ -53,3 +53,10 @@ We are currently working on the “train your own gesture” feature to empower 
 MIT License © 2025 Vineet & Shyamkrishna
 
 Turn your gestures into symphonies. Because music isn’t just heard — it’s _felt_.
+
+```bash
+pyinstaller --noconfirm --onefile --windowed \
+--add-data "utils;utils" \
+--add-data "model;model" \
+customTKinter.v7.py
+```
