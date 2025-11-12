@@ -1,23 +1,8 @@
-import csv
 import os
 import sys
 from datetime import datetime
-
-# idk who added this
-def logging_csv(number, mode, landmark_list, point_history_list):
-#     if mode == 0:
-#         pass
-#     if mode == 1 and (0 <= number <= 9):
-#         csv_path = 'model/keypoint_classifier/keypoint.csv'
-#         with open(csv_path, 'a', newline="") as f:
-#             writer = csv.writer(f)
-#             writer.writerow([number, *landmark_list])
-#     if mode == 2 and (0 <= number <= 9):
-#         csv_path = 'model/point_history_classifier/point_history.csv'
-#         with open(csv_path, 'a', newline="") as f:
-#             writer = csv.writer(f)
-#             writer.writerow([number, *point_history_list])
-    return
+import time
+from typing import Any, Dict
 
 def logging():
     log_dir = "logs"
@@ -35,3 +20,64 @@ def logging():
 
     print(f"[{datetime.now()}] - Log started: {log_filename}")
     return log_file
+
+last_note_info: Dict[str, Any] = {
+    "note": None,
+    "start_time": None,
+    "finger_count": None,
+    "instrument": None,
+    "last_log_time": 0.0
+}
+
+NOTE_STABILITY_WINDOW = 0.5  # Ignore notes shorter than this (likely jitter)
+NOTE_LOG_COOLDOWN = 2.5      # Cooldown before same note can be re-logged
+
+
+def log_note_play(note: int, finger_count: int, instrument_index: int) -> None:
+    """
+    Logs note events in a clean, non-repetitive way.
+    Skips jittery repeats and merges continued notes gracefully.
+    """
+    global last_note_info
+
+    now = time.time()
+    current_time = time.strftime("%H:%M:%S", time.localtime(now))
+
+    # Handle same-note repeats (jitter or too soon)
+    if (
+        last_note_info["note"] == note and
+        last_note_info["instrument"] == instrument_index and
+        now - last_note_info.get("last_log_time", 0.0) < NOTE_LOG_COOLDOWN
+    ):
+        return  # Skip re-logging same note within cooldown window
+
+    # Gracefully log note continuation if same note after cooldown
+    if (
+        last_note_info["note"] == note and
+        last_note_info["instrument"] == instrument_index and
+        now - last_note_info.get("last_log_time", 0.0) >= NOTE_LOG_COOLDOWN
+    ):
+        print(f"[{current_time}] ~ Continuing note: {note} "
+              f"(Instrument {instrument_index}, Fingers {finger_count})")
+        last_note_info["last_log_time"] = now
+        return
+
+    # If a note was playing before, compute its duration and log end
+    prev_start = last_note_info.get("start_time")
+    if last_note_info["note"] is not None and isinstance(prev_start, (int, float)):
+        duration = now - prev_start
+        if duration >= NOTE_STABILITY_WINDOW:
+            print(f"[{current_time}] :: Ended note: {last_note_info['note']} "
+                  f"(Instrument {last_note_info['instrument']}, Fingers {last_note_info['finger_count']}) "
+                  f"-> Duration: {duration:.2f}s")
+
+    # Log the new note
+    print(f"[{current_time}] <> Playing note: {note} "
+          f"(Instrument {instrument_index}, Fingers {finger_count})")
+
+    # Update state explicitly for type-safety
+    last_note_info["note"] = note
+    last_note_info["start_time"] = now
+    last_note_info["finger_count"] = finger_count
+    last_note_info["instrument"] = instrument_index
+    last_note_info["last_log_time"] = now

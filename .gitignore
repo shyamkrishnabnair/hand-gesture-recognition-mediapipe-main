@@ -160,4 +160,8 @@ cython_debug/
 #.idea/
 logs/
 snippets.py
-ToDo*.md
+*ToDo*.md
+tempCodeRunnerFile.py
+*.zip
+.vscode/
+export/

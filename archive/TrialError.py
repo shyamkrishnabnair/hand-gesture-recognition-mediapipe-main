@@ -10,7 +10,7 @@ import subprocess
 import pygame
 import customtkinter as ctk #type: ignore
 import logging # Import standard logging module
-from notation_panel import NotationPanel
+from archive.notation_panel import NotationPanel
 
 try:
     pygame.mixer.init()

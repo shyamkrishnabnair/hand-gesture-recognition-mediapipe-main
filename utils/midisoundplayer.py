@@ -31,7 +31,7 @@ class MidiSoundPlayer:
     def toggle_mute(self):
         self.muted = not self.muted
 
-    def play_note(self, note: int, duration: float = None):
+    def play_note(self, note: int, duration: float = 0.00):
         if self.muted:
             return
 
@@ -56,7 +56,7 @@ class MidiSoundPlayer:
         # Threaded stop (non-blocking)
         threading.Thread(target=self._stop_note_after_delay, args=(note, duration), daemon=True).start()
 
-    def play_chord(self, notes: list[int], duration: float = None):
+    def play_chord(self, notes: list[int], duration: float = 0.00):
         if self.muted:
             return
 
@@ -100,7 +100,7 @@ class MidiSoundPlayer:
         self.player.close()
         pygame.midi.quit()
         
-    def handle_note_playing(finger_count, app_state):
+    def handle_note_playing(self, finger_count, app_state):
         current_time = time.time()
 
         if (

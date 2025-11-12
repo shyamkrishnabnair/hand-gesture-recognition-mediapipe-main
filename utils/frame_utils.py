@@ -40,8 +40,10 @@ def right_hand_label(is_pinch, center_px, debug_image, app_state, drag_threshold
     if is_pinch:
         cv.circle(debug_image, center_px, 15, (0, 255, 0), 3) # Green circle
 
-        if not app_state.pinch_mode:
+        # Ensure last_volume_level always exists (reflect current player volume)
+        last_volume_level = int(app_state.player.volume * 100)
 
+        if not app_state.pinch_mode:
             app_state.pinch_mode = True
             app_state.pinch_start_x = center_px[0] # Record start X for horizontal movement
         else:
@@ -49,10 +51,10 @@ def right_hand_label(is_pinch, center_px, debug_image, app_state, drag_threshold
                 delta_x = center_px[0] - app_state.pinch_start_x
                 if abs(delta_x) > drag_threshold/20:
 
-                # Volume sensitivity (drag 1% screen = 1 step)
+                    # Volume sensitivity (drag 1% screen = 1 step)
                     volume_delta = delta_x / (screen_width * 0.01)
                     volume_delta = max(-10, min(10, volume_delta))  # Cap delta for control
-                        # Apply new volume
+                    # Apply new volume
                     new_volume = app_state.player.volume + (volume_delta / 100)
                     app_state.player.volume = max(0.0, min(1.0, new_volume))
 
@@ -62,13 +64,13 @@ def right_hand_label(is_pinch, center_px, debug_image, app_state, drag_threshold
                     app_state.app_logger.debug(f"Volume: {last_volume_level}%")
 
             # Always update start position for next drag, even if muted
-            pinch_start_x = center_px[0]
+            app_state.pinch_start_x = center_px[0]
 
         # Draw volume bar on debug image
         draw_volume_bar(debug_image, last_volume_level)
     else:
         cv.circle(debug_image, center_px, 15, (0, 0, 255), 2) # Blue circle when not pinching
-        pinch_mode = False # Reset pinch mode
+        app_state.pinch_mode = False # Reset pinch mode
 
 def draw_volume_bar(debug_image, last_volume_level):
     bar_x, bar_y = 10, 85
@@ -158,6 +160,7 @@ def detect_hands_and_classify(rgb_image, hands, debug_image, app_state):
         app_state.point_history.append([0, 0]) # Append dummy point if no hands detected
         app_state.app_logger.debug("No hands detected in frame.")
         app_state.player.note_cooldowns.clear()  # Reset if no hands detected
+        # return None, None, None, [], []
         
 def count_fingers(hand_label, hand_landmarks_xy, hand_sign_id, most_common_fg_id, app_state):
     # Finger Counting Logic

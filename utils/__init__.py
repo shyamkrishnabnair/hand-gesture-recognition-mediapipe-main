@@ -3,7 +3,7 @@ from .select_mode import select_mode
 from .get_args import get_args
 from .calculate import calc_bounding_rect,calc_landmark_list
 from .pre_process import pre_process_landmark, pre_process_point_history
-from .log import logging_csv, logging
+from .log import logging, log_note_play
 from .draw import draw_info_text, draw_bounding_rect, draw_point_history, draw_info, draw_landmarks
 from .midisoundplayer import MidiSoundPlayer
 from .ctktestboxhandler import CTkTextboxHandler
@@ -22,8 +22,8 @@ __all__ = [
     "calc_landmark_list",
     "pre_process_landmark",
     "pre_process_point_history",
-    "logging_csv",
     "logging",
+    "log_note_play",
     "draw_info_text",
     "draw_bounding_rect",
     "draw_point_history",
@@ -37,6 +37,6 @@ __all__ = [
     # "process_volume_control",
     "count_fingers",
     "draw_debug_overlays",
-    "AppState"
-    "NotationPanel"
+    "AppState",
+    "NotationPanel",
 ]

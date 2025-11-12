@@ -1,4 +1,4 @@
-#customTkinter.v7.py
+#customTkinter.v8.py
 import sys, csv, copy, time, subprocess, logging
 from collections import Counter, deque
 import cv2 as cv
@@ -79,8 +79,8 @@ app_logger.setLevel(logging.INFO)
 def refresh():
     stop_camera()
     app.destroy()
-    subprocess.Popen([sys.executable, 'customTkinter.v7.py'])
-    app_logger.info("GUI refreshed (customTkinter.v7.py restarted)")
+    subprocess.Popen([sys.executable, 'customTkinter.v8.py'])
+    app_logger.info("GUI refreshed (customTkinter.v8.py restarted)")
     log_file.close()
 
 def quit_app():
@@ -223,6 +223,7 @@ def update_frame():
                                 new_instrument = instrument_ids[current_instrument_index]
                                 player.set_instrument(new_instrument)
                                 player.play_note(60, duration=0.9)  # C4 note for 0.9s 
+                                right_panel.current_instrument = new_instrument   # ✅ keep recorder in sync
                                 app_logger.info(f"Instrument: {instrument_names[current_instrument_index]}")
                                 instrument_label.configure(text=f"Instrument: {instrument_names[current_instrument_index]}")
                                 instrument_scroll_start_x = center_px[0] 
@@ -400,6 +401,7 @@ center_panel.pack(side="left", expand=True)
 # right_panel.pack(side="left", fill="y", padx=(10, 0))
 right_panel = ctk.CTkFrame(main_frame, width=300)
 right_panel.pack(side="left", fill="y", padx=(10, 0))
+right_panel.current_instrument = instrument_ids[current_instrument_index]
 # --- Right Panel: Recording + Playback ---
 recording_label = ctk.CTkLabel(right_panel, text="🎵 Recording Panel", font=("Segoe UI", 16, "bold"))
 recording_label.pack(pady=10)
@@ -407,17 +409,22 @@ recording_label.pack(pady=10)
 recording_status = ctk.CTkLabel(right_panel, text="Status: Idle", fg_color=None)
 recording_status.pack(pady=5)
 
+right_panel.is_recording = False
+
 # Start / Stop Recording buttons
 def start_recording():
     # Placeholder: append current finger events to a list
     print("Recording started...")
+    right_panel.recording_start_time = time.time()
     recording_status.configure(text="🎵 Recording...")
     right_panel.recording_data = []
+    right_panel.is_recording = True
 
 def stop_recording():
     # Placeholder: stop appending
+    right_panel.is_recording = False
     print("Recording stopped. Captured", len(getattr(right_panel, 'recording_data', [])), "events")
-    recording_status.configure(text="Stopped. Captured {} events".format(len(right_panel.recording_data)))
+    recording_status.configure(text=f"Stopped. Captured {len(right_panel.recording_data)} events")
 
 start_record_btn = ctk.CTkButton(right_panel, text="⏺ Start Recording", command=start_recording)
 start_record_btn.pack(pady=5, padx=10)
@@ -446,34 +453,58 @@ import os, json
 RECORDINGS_DIR = "recordings"
 os.makedirs(RECORDINGS_DIR, exist_ok=True)
 
-def save_recording(name="recording1"):
+def save_recording(name="recording"):
     data = getattr(right_panel, 'recording_data', [])
     if not data:
         return
-    path = os.path.join(RECORDINGS_DIR, f"{name}.json")
+
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    path = os.path.join(RECORDINGS_DIR, f"{name}_{timestamp}.json")
+
     with open(path, "w") as f:
         json.dump(data, f)
+
     update_recording_list()
+
 
 stop_record_btn = ctk.CTkButton(right_panel, text="Save Recording", command=save_recording)
 stop_record_btn.pack(pady=5, padx=10)
 
 # Playback button
-def playback_recording(index=0):
+def playback_recording(index=0, start_time=None):
     data = getattr(right_panel, 'recording_data', [])
+    if not data:
+        return
+    
+    if start_time is None:
+        start_time = time.time()
+
     if index >= len(data):
         if getattr(right_panel, 'playback_loop', False):
-            playback_recording(0)  # restart from beginning
+            playback_recording(0)  # restart
         else:
             recording_status.configure(text="Playback finished!")
         return
     
-    gesture_id = data[index]
-    player.play_note(note_mapping.get(gesture_id, 60), duration=10)
-    notation_panel.add_gesture(gesture_id)
-    
-    # Schedule next note after 200ms
-    right_panel.after(200, playback_recording, index + 1)
+    event = data[index]
+    delay = event["time"] - (time.time() - start_time)
+    delay = max(0, int(delay * 1000))  # ms
+
+    def play_event():
+        note = note_mapping.get(event["gesture"], 60)
+
+        # ✅ instrument is stored as ID, so set it directly
+        player.set_instrument(event["instrument"])
+        
+        player.play_note(note, duration=10)
+        notation_panel.add_gesture(event["gesture"])
+
+        # move to next event
+        playback_recording(index + 1, start_time)
+
+    right_panel.after(delay, play_event)
+
+
 
 playback_btn = ctk.CTkButton(right_panel, text="▶ Playback", command=playback_recording)
 playback_btn.pack(pady=10)
@@ -490,8 +521,15 @@ loop_btn.pack(pady=5, padx=10)
 
 
 def record_gesture(gesture_id):
-    if hasattr(right_panel, 'recording_data'):
-        right_panel.recording_data.append(gesture_id)
+    if getattr(right_panel, 'is_recording', False):
+        timestamp = time.time() - right_panel.recording_start_time
+        right_panel.recording_data.append({
+            "gesture": gesture_id,
+            "time": timestamp,
+            "instrument": instrument_ids[current_instrument_index]  # store ID 🎯
+        })
+
+
 
 # --- Add a logging area to the UI --- ((moved to left panel))
 # log_frame = ctk.CTkFrame(app, fg_color="transparent")
