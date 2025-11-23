@@ -1,4 +1,4 @@
-#main.py
+#main_optimized.py
 import sys, csv, copy, time, subprocess, logging
 from collections import Counter, deque
 import cv2 as cv
@@ -6,8 +6,6 @@ cv.setUseOptimized(True)
 cv.setNumThreads(2)
 import mediapipe as mp
 
-# Lazy-import reportlab inside the export function to avoid ImportError at module import time
-# (some environments or static analyzers may not have reportlab installed).
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
@@ -15,7 +13,6 @@ from PIL import Image, ImageTk
 import customtkinter as ctk
 
 # Model imports
-from model import KeyPointClassifier, PointHistoryClassifier
 from utils.calculate import calc_bounding_rect, calc_landmark_list
 from utils.pre_process import pre_process_landmark, pre_process_point_history
 from utils.log import logging as custom_logging
@@ -25,12 +22,6 @@ from utils import MidiSoundPlayer, CTkTextboxHandler
 from utils import NotationPanel
 
 log_file = custom_logging()
-keypoint_classifier = KeyPointClassifier()
-point_history_classifier = PointHistoryClassifier()
-with open('model/keypoint_classifier/keypoint_classifier_label.csv', encoding='utf-8-sig') as f:
-    keypoint_classifier_labels = [row[0] for row in csv.reader(f)]
-with open('model/point_history_classifier/point_history_classifier_label.csv', encoding='utf-8-sig') as f:
-    point_history_classifier_labels = [row[0] for row in csv.reader(f)]
 
 # CustomTkinter setup
 ctk.set_appearance_mode("dark")
@@ -99,8 +90,8 @@ app_logger.setLevel(logging.INFO)
 def refresh():
     stop_camera()
     app.destroy()
-    subprocess.Popen([sys.executable, 'main.py'])
-    app_logger.info("GUI refreshed (main.py restarted)")
+    subprocess.Popen([sys.executable, 'main_optimized.py'])
+    app_logger.info("GUI refreshed (main_optimized.py restarted)")
     log_file.close()
 
 def quit_app():
@@ -181,17 +172,8 @@ def update_frame():
                     pre_processed_landmark_list = pre_process_landmark(landmark_list)
                     pre_processed_point_history_list = pre_process_point_history(debug_image, point_history)
 
-                    # Classify hand sign (static pose)
-                    hand_sign_id = keypoint_classifier(pre_processed_landmark_list)
-                    if hand_sign_id == 2: # Assuming hand_sign_id 2 corresponds to a specific gesture for history
-                        point_history.append(landmark_list[8]) # Append index finger tip (landmark 8)
-                    else:
-                        point_history.append([0, 0]) # Append dummy point if not the specific gesture
-
                     # Classify finger gesture (dynamic movement)
                     finger_gesture_id = 0
-                    if len(pre_processed_point_history_list) == 32: # Check if history is full for classification
-                        finger_gesture_id = point_history_classifier(pre_processed_point_history_list)
 
                     finger_gesture_history.append(finger_gesture_id)
                     most_common_fg_id = Counter(finger_gesture_history).most_common()
@@ -320,7 +302,7 @@ def update_frame():
                     # Log detected hand info to the UI
                     global log_finger_count
                     if log_finger_count != finger_count:
-                        app_logger.info(f"Hand: {hand_label}, Fingers: {finger_count}, Sign: {keypoint_classifier_labels[hand_sign_id]}, Gesture: {point_history_classifier_labels[most_common_fg_id[0][0]]}")
+                        app_logger.info(f"Hand: {hand_label}, Fingers: {finger_count}")
                         log_finger_count = finger_count
 
                     # Draw annotations on the debug image
@@ -330,8 +312,6 @@ def update_frame():
                         debug_image,
                         brect,
                         handedness,
-                        keypoint_classifier_labels[hand_sign_id],
-                        point_history_classifier_labels[most_common_fg_id[0][0]],
                         finger_count,
                     )
                     
@@ -455,8 +435,6 @@ setattr(right_panel, "current_instrument", instrument_ids[current_instrument_ind
 # Ensure recording attributes exist for static analyzers and runtime defaults
 setattr(right_panel, "recording_start_time", 0.0)
 setattr(right_panel, "recording_data", [])
-setattr(right_panel, "timeline_events", [])
-setattr(right_panel, "timeline_start_time", time.time())
 # --- Right Panel: Recording + Playback ---
 recording_label = ctk.CTkLabel(right_panel, text="🎵 Recording Panel", font=("Segoe UI", 16, "bold"))
 recording_label.pack(pady=10)
@@ -506,27 +484,21 @@ def update_recording_list():
 # save recordings
 import os, json
 
-RECORDINGS_DIR = "exports/json"
+RECORDINGS_DIR = "recordings"
 os.makedirs(RECORDINGS_DIR, exist_ok=True)
 
-def save_recording(name="recordings"):
+def save_recording(name="recording"):
     data = getattr(right_panel, 'recording_data', [])
     if not data:
         return
 
     timestamp = time.strftime("%Y%m%d_%H%M%S")
-    json_path = os.path.join("exports/json", f"{name}_{timestamp}.json")
+    path = os.path.join(RECORDINGS_DIR, f"{name}_{timestamp}.json")
 
-    with open(json_path, "w") as f:
+    with open(path, "w") as f:
         json.dump(data, f)
 
-    pdf_dir = "exports/pdf"
-    os.makedirs(pdf_dir, exist_ok=True)
-    pdf_path = os.path.join(pdf_dir, f"{name}_{timestamp}.pdf")
-
-    export_notation_pdf(data, notation_panel, pdf_path)
     update_recording_list()
-    print("saved exports JSON + PDF")
 
 
 stop_record_btn = ctk.CTkButton(right_panel, text="Save Recording", command=save_recording)
@@ -578,6 +550,7 @@ def toggle_loop():
 loop_btn = ctk.CTkButton(right_panel, text="Loop: OFF", command=toggle_loop)
 loop_btn.pack(pady=5, padx=10)
 
+
 def record_gesture(gesture_id):
     if getattr(right_panel, 'is_recording', False):
         # Use getattr to safely read the optional attribute and provide a default
@@ -595,6 +568,8 @@ def record_gesture(gesture_id):
             "time": timestamp,
             "instrument": instrument_ids[current_instrument_index]  # store ID 🎯
         })
+
+
 
 # --- Add a logging area to the UI --- ((moved to left panel))
 # log_frame = ctk.CTkFrame(app, fg_color="transparent")
@@ -646,48 +621,5 @@ def on_close():
     except AttributeError:
         pass
 
-def export_notation_pdf(recording_data, notation_panel, file_path):
-    # Import reportlab lazily so missing optional dependency doesn't break module import.
-    try:
-        from reportlab.pdfgen import canvas
-        from reportlab.lib.pagesizes import A4, landscape
-    except Exception:
-        app_logger.error("reportlab is not installed; cannot export PDF. Install it with: pip install reportlab")
-        raise RuntimeError("reportlab is required to export PDF. Install it with: pip install reportlab")
-
-    c = canvas.Canvas(file_path, pagesize=landscape(A4))
-
-    width, height = landscape(A4)
-
-    # draw staff lines
-    staff_y = [100, 115, 130, 145, 160]
-    for y in staff_y:
-        c.line(50, y, width - 50, y)
-
-    x = 60
-    spacing = 35  # how far each note is horizontally
-
-    for event in recording_data:
-        gesture = event["gesture"]
-
-        symbol = notation_panel.get_note_symbol(gesture)
-        y = notation_panel.get_note_y(gesture)
-
-        # PDF coordinate system starts bottom-left, so adjust:
-        pdf_y = height - (y + 200)
-
-        c.setFont("Helvetica-Bold", 24)
-        c.drawString(x, pdf_y, symbol)
-
-        x += spacing
-
-        # If x exceeds page, create new page
-        if x > width - 60:
-            c.showPage()
-            x = 60
-            for y2 in staff_y:
-                c.line(50, y2, width - 50, y2)
-
-    c.save()
 app.protocol("WM_DELETE_WINDOW", on_close) 
 app.mainloop()

@@ -86,12 +86,3 @@ class NotationPanel:
                 self.events.remove(item)
 
         self.canvas.after(50, self.scroll)
-
-    def get_note_symbol(self, gesture_id):
-        return self.symbols.get(gesture_id, "?")
-
-    def get_note_y(self, gesture_id):
-        return self.note_positions.get(
-            gesture_id,
-            self.staff_y_positions[2]  # fallback: middle line
-        )
