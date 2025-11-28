@@ -1,9 +1,9 @@
 # utils/app_state.py
-from PIL.ImageTk import PhotoImage
+from collections import deque
 class AppState:
     def __init__(self):
         # For volume control
-        self.last_volume_level = 50
+        self.last_volume_level = 100
         self.pinch_mode = False
         self.pinch_start_x = 0
         self.is_muted = False
@@ -31,7 +31,6 @@ class AppState:
             9: 74,  # D5
             10: 76  # E5
         }
-        self.instrument_label = None
 
         # For gesture logic
         self.frame_id = 0
@@ -44,7 +43,7 @@ class AppState:
 
         # Live control
         self.running = False
-        self.start_time = 0.0
+        self.start_time = None
 
         # MIDI player reference
         self.player = None  # Assign from outside
@@ -53,8 +52,6 @@ class AppState:
         self.instrument_label = None
         self.status_label = None
         self.video_label = None
-        self.video_label_img = PhotoImage | None
-        self.log_finger_count = 0
         self.mute_btn = None
 
         # Logging (assign externally)

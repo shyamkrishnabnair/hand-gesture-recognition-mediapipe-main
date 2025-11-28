@@ -54,7 +54,8 @@ def draw_bounding_rect(use_brect, image, brect):
     return image
 
 
-def draw_info_text(image, brect, handedness, finger_count):
+def draw_info_text(image, brect, handedness, hand_sign_text,
+                   finger_gesture_text, finger_count):
     font = cv.FONT_HERSHEY_SIMPLEX
     font_scale = 0.55
     thickness = 1
@@ -65,16 +66,26 @@ def draw_info_text(image, brect, handedness, finger_count):
 
     # Combine handedness and hand sign
     info_text = handedness.classification[0].label
+    if hand_sign_text != "":
+        info_text += f": {hand_sign_text}"
 
     # Draw hand label
     cv.putText(image, info_text, (brect[0] + 5, brect[1] - 5),
                font, font_scale, (255, 255, 255), thickness, cv.LINE_AA)
+
+    # Draw finger gesture text
+    if finger_gesture_text != "":
+        y_pos = 50
+        text = f"Gesture: {finger_gesture_text}"
+        cv.putText(image, text, (10, y_pos), font, 0.7, (0, 0, 0), shadow, cv.LINE_AA)
+        cv.putText(image, text, (10, y_pos), font, 0.7, (255, 255, 255), thickness, cv.LINE_AA)
 
     # Finger count (draw near hand)
     cv.putText(image, f"Count: {finger_count}", (brect[0], brect[3] + 20),
                cv.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2, cv.LINE_AA)
 
     return image
+
 
 def draw_point_history(image, point_history):
     for index, point in enumerate(point_history):

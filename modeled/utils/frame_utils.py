@@ -1,13 +1,15 @@
 import cv2 as cv
-import copy
+import copy, csv
 from collections import Counter
 from utils.calculate import calc_bounding_rect, calc_landmark_list
 from utils.draw import draw_info_text, draw_bounding_rect, draw_landmarks
 from utils.pre_process import pre_process_landmark, pre_process_point_history
-from utils.app_state import AppState
-from main import app_logger, instrument_label, player
+with open('./model/keypoint_classifier/keypoint_classifier_label.csv', encoding='utf-8-sig') as f:
+    keypoint_classifier_labels = [row[0] for row in csv.reader(f)]
+with open('./model/point_history_classifier/point_history_classifier_label.csv', encoding='utf-8-sig') as f:
+    point_history_classifier_labels = [row[0] for row in csv.reader(f)]
 
-def left_hand_label(is_pinch, debug_image, center_px, drag_threshold, player, app_state: AppState):
+def left_hand_label(is_pinch, debug_image, center_px, drag_threshold, app_state):
     if is_pinch:
         cv.putText(debug_image, f"Instrument: {app_state.instrument_names[app_state.current_instrument_index]}", (10, 40), cv.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2, cv.LINE_AA)
 
@@ -26,10 +28,10 @@ def left_hand_label(is_pinch, debug_image, center_px, drag_threshold, player, ap
                     app_state.current_instrument_index = (app_state.current_instrument_index - 1) % len(app_state.instrument_ids)
 
                 new_instrument = app_state.instrument_ids[app_state.current_instrument_index]
-                player.set_instrument(new_instrument)
-                player.play_note(60, duration=0.9)  # C4 note for 0.9s
-                app_logger.info(f"Instrument: {app_state.instrument_names[app_state.current_instrument_index]}")
-                instrument_label.configure(text=f"Instrument: {app_state.instrument_names[app_state.current_instrument_index]}")
+                app_state.player.set_instrument(new_instrument)
+                app_state.player.play_note(60, duration=0.9)  # C4 note for 0.9s
+                app_state.app_logger.info(f"Instrument: {app_state.instrument_names[app_state.current_instrument_index]}")
+                app_state.instrument_label.configure(text=f"Instrument: {app_state.instrument_names[app_state.current_instrument_index]}")
                 app_state.instrument_scroll_start_x = center_px[0]
     else:
         app_state.instrument_scroll_mode = False
@@ -87,7 +89,7 @@ def preprocess_frame(cap):
     debug_image = copy.deepcopy(frame)
     rgb_image = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
     
-    return rgb_image, debug_image, ""
+    return rgb_image, debug_image
 
 def detect_hands_and_classify(rgb_image, hands, debug_image, app_state):
     results = hands.process(rgb_image) # Process the image for hand landmarks
@@ -142,7 +144,7 @@ def detect_hands_and_classify(rgb_image, hands, debug_image, app_state):
             cv.putText(debug_image, f"Instrument: {app_state.instrument_names[app_state.current_instrument_index]}", (10, 40), cv.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2, cv.LINE_AA)
 
             if hand_label == "Left":
-                left_hand_label(is_pinch, debug_image, center_px, drag_threshold, player, app_state)
+                left_hand_label(is_pinch, debug_image, center_px, drag_threshold, app_state)
             elif hand_label == "Right":
                 right_hand_label(is_pinch, center_px, debug_image, app_state, drag_threshold, screen_width)
 
@@ -175,7 +177,7 @@ def count_fingers(hand_label, hand_landmarks_xy, hand_sign_id, most_common_fg_id
     app_state.total_finger_count += finger_count # Accumulate finger count from all hands
 
     # Log detected hand info to the UI
-    app_state.app_logger.info(f"Hand: {hand_label}, Fingers: {finger_count}")
+    app_state.app_logger.info(f"Hand: {hand_label}, Fingers: {finger_count}, Sign: {keypoint_classifier_labels[hand_sign_id]}, Gesture: {point_history_classifier_labels[most_common_fg_id[0][0]]}")
     return finger_count
 
 def draw_debug_overlays(brect, landmark_list, hand_sign_id, most_common_fg_id, finger_count, handedness, debug_image):
@@ -185,5 +187,7 @@ def draw_debug_overlays(brect, landmark_list, hand_sign_id, most_common_fg_id, f
         debug_image,
         brect,
         handedness,
+        keypoint_classifier_labels[hand_sign_id],
+        point_history_classifier_labels[most_common_fg_id[0][0]],
         finger_count,
     )

@@ -1,7 +1,8 @@
 import customtkinter as ctk
+import time
 
 class NotationPanel:
-    def __init__(self, parent, width=900, height=150, scroll_speed=2):
+    def __init__(self, parent, width=900, height=150, scroll_speed=2.5):
         self.canvas = ctk.CTkCanvas(
             parent, width=width, height=height, bg="black", highlightthickness=0
         )
@@ -15,6 +16,7 @@ class NotationPanel:
             1: "●", 2: "▲", 3: "■", 4: "★", 5: "✦",
             6: "✧", 7: "♫", 8: "♩", 9: "♪", 10: "♬"
         }
+
 
         # Draw staff lines (5 horizontal lines)
         self.staff_y_positions = []
@@ -86,3 +88,41 @@ class NotationPanel:
                 self.events.remove(item)
 
         self.canvas.after(50, self.scroll)
+
+    def get_note_symbol(self, gesture_id):
+        return self.symbols.get(gesture_id, "?")
+
+    def get_note_y(self, gesture_id):
+        return self.note_positions.get(
+            gesture_id,
+            self.staff_y_positions[2]  # fallback: middle line
+        )
+    def add_timed_event(self, event, timeline_start_time):
+        """
+        event = { "gesture": int, "time": float, "instrument": int }
+        timeline_start_time = float (when playback/recording started)
+        """
+
+        now = time.time() - timeline_start_time
+        age = now - event["time"]    # seconds since event happened
+
+        if age < 0:
+            return  # not played yet (future event)
+
+        # convert scroll speed (px per 50ms) into px/sec
+        scroll_speed_px_per_sec = self.scroll_speed * 20
+
+        # live X position
+        x = self.canvas.winfo_width() - age * scroll_speed_px_per_sec
+
+        symbol = self.get_note_symbol(event["gesture"])
+        y = self.get_note_y(event["gesture"])
+
+        text_id = self.canvas.create_text(
+            x, y, text=symbol, fill="white",
+            font=("Segoe UI", 20, "bold")
+        )
+
+        # store tuple: canvas id + event reference
+        self.events.append((text_id, event))
+
