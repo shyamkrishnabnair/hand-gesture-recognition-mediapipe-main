@@ -1,5 +1,6 @@
 #main.py
 import sys, copy, time, subprocess, logging
+from collections import deque
 import cv2 as cv
 cv.setUseOptimized(True)
 cv.setNumThreads(2)
@@ -12,12 +13,11 @@ from PIL import Image, ImageTk
 import customtkinter as ctk
 
 # Model imports
-# from models import KeyPointClassifier, PointHistoryClassifier
 from utils.calculate import calc_bounding_rect, calc_landmark_list
+from utils.pre_process import pre_process_landmark, pre_process_point_history
 from utils.log import logging as custom_logging
 from utils.log import log_note_play
 from utils.draw import draw_info_text, draw_bounding_rect, draw_point_history, draw_info, draw_landmarks
-from utils.app_state import AppState
 from utils import MidiSoundPlayer, CTkTextboxHandler
 from utils import NotationPanel
 
@@ -44,9 +44,41 @@ if mp_hands is None:
 hands = mp_hands.Hands(static_image_mode=False, max_num_hands=2, min_detection_confidence=0.7, min_tracking_confidence=0.5)
 
 # Global vars
-app_state = AppState()
+running = False
 cap = None
-video_label_img = None
+start_time = None
+pinch_mode = False
+point_history = deque(maxlen=16)
+finger_gesture_history = deque(maxlen=16)
+last_finger_count = 0
+last_note_time = 0
+note_cooldown = 0.5  # seconds between two notes
+last_volume_level = 50
+is_muted = False
+pinch_start_x = 0
+left_hand_pinch_state = False
+current_instrument_index = 0
+instrument_scroll_mode = False
+instrument_scroll_start_x = 0
+video_label = None  # placeholder globally 
+video_label_img = None  # keep a reference to the current PhotoImage to prevent GC and avoid adding attributes to CTkLabel
+note_mapping = {
+    1: 60,  # C4
+    2: 62,  # D4
+    3: 64,  # E4
+    4: 65,  # F4
+    5: 67,  # G4
+    6: 69,  # A4
+    7: 71,  # B4
+    8: 72,  # C5
+    9: 74,  # D5
+    10: 76  # E5
+}
+instrument_names = [
+    "Acoustic Grand Piano 🎹", "Bright Piano 🎹", "Electric Piano 🎹", "Harpsichord 🎹", "Drawbar Organ 🎹", "Acoustic Guitar 🎸", "Overdriven Guitar 🎸", "Bass Guitar 🎸", "Violin 🎻", "String Ensemble 🎻", "Trumpet 🎺", "Saxophone 🎷", "Flute 🎶", "Synth Lead 🎹", "Synth Pad 🎹"
+]
+instrument_ids = [0, 1, 4, 6, 16, 24, 29, 33, 40, 48, 56, 65, 73, 80, 88]
+log_finger_count = 0
 
 # Initialize MIDI sound player (no need for .sf2 or external tools)
 player = MidiSoundPlayer()
@@ -69,25 +101,25 @@ def quit_app():
     log_file.close()
 
 def update_timer():
-    if app_state.running:
-        if app_state.start_time is None:
+    if running:
+        if start_time is None:
             elapsed = 0
         else:
-            elapsed = int(time.time() - app_state.start_time)
+            elapsed = int(time.time() - start_time)
         status_label.configure(text=f"Status: Running ({elapsed}s)")
         app.after(1000, update_timer) # Schedule next update after 1 second
 
 def start_camera():
-    global cap
-    if app_state.running:
+    global running, cap, start_time
+    if running:
         app_logger.warning("Camera is already running.")
         return
-    app_state.running = True
-    app_state.start_time = time.time()
+    running = True
+    start_time = time.time()
     cap = cv.VideoCapture(0) # Open default webcam (index 0)
     if not cap.isOpened():
         app_logger.error("Failed to open webcam. Please check if it's connected and not in use.")
-        app_state.running = False
+        running = False
         status_label.configure(text="Status: Error (Webcam not found)")
         return
     update_timer()
@@ -96,11 +128,11 @@ def start_camera():
     app_logger.info("Camera started.")
 
 def stop_camera():
-    global cap
-    if not app_state.running:
+    global running, cap
+    if not running:
         app_logger.info("Camera is already stopped.")
         return
-    app_state.running = False
+    running = False
     if cap:
         cap.release()
         cap = None
@@ -113,7 +145,7 @@ def toggle_mute():
     app_logger.info("Muted" if player.muted else "Unmuted")
 
 def update_frame():
-    if not app_state.running or not cap:
+    if not running or not cap:
         return
 
     frame_start_time = time.time()
@@ -137,11 +169,15 @@ def update_frame():
                 for hand_landmarks, handedness in zip(multi_landmarks, multi_handedness):
                     brect = calc_bounding_rect(debug_image, hand_landmarks)
                     landmark_list = calc_landmark_list(debug_image, hand_landmarks)
+                    pre_processed_landmark_list = pre_process_landmark(landmark_list)
+                    pre_processed_point_history_list = pre_process_point_history(debug_image, point_history)
 
                     # Classify finger gesture (dynamic movement)
                     finger_gesture_id = 0
 
-                    app_state.finger_gesture_history.append(finger_gesture_id)
+                    finger_gesture_history.append(finger_gesture_id)
+
+                    global last_volume_level, pinch_mode, pinch_start_x, is_muted, left_hand_pinch_state
                     
                     hand_label = handedness.classification[0].label # "Left" or "Right"
                     hand_landmarks_xy = [[lm.x, lm.y] for lm in hand_landmarks.landmark] # Normalized coordinates
@@ -166,47 +202,54 @@ def update_frame():
                     screen_width = debug_image.shape[1]
                     drag_threshold = screen_width * 0.2  # 20% of screen width
                     # Left Hand: Mute/Unmute Toggle
+
+                    if 'pinch_mode' not in globals():
+                        pinch_mode = False
+                        pinch_start_x = 0
+
+                    global instrument_scroll_mode, instrument_scroll_start_x, instrument_ids, instrument_names, current_instrument_index
+                    # cv.putText(debug_image, f"Instrument: {instrument_names[current_instrument_index]}", (10, 40), cv.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2, cv.LINE_AA)
                     
                     if hand_label == "Left":
                         if is_pinch:
                             # cv.putText(debug_image, f"Instrument: {instrument_names[current_instrument_index]}", (10, 40), cv.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2, cv.LINE_AA)
 
                             cv.circle(debug_image, center_px, 15, (255, 255, 0), 3)  # Yellow for left hand
-                            if not app_state.instrument_scroll_mode:
-                                app_state.instrument_scroll_mode = True
-                                app_state.instrument_scroll_start_x = center_px[0]
+                            if not instrument_scroll_mode:
+                                instrument_scroll_mode = True
+                                instrument_scroll_start_x = center_px[0]
                             else:
-                                print(f"Instrument scroll mode active, start X: {app_state.instrument_scroll_start_x}, center X: {center_px[0]}")
-                                delta_x = center_px[0] - app_state.instrument_scroll_start_x
+                                print(f"Instrument scroll mode active, start X: {instrument_scroll_start_x}, center X: {center_px[0]}")
+                                delta_x = center_px[0] - instrument_scroll_start_x
 
                                 if abs(delta_x) >= drag_threshold:
                                     if delta_x > 0:
-                                        app_state.current_instrument_index = (app_state.current_instrument_index + 1) % len(app_state.instrument_ids)
+                                        current_instrument_index = (current_instrument_index + 1) % len(instrument_ids)
                                     else:
-                                        app_state.current_instrument_index = (app_state.current_instrument_index - 1) % len(app_state.instrument_ids)
+                                        current_instrument_index = (current_instrument_index - 1) % len(instrument_ids)
 
-                                    new_instrument = app_state.instrument_ids[app_state.current_instrument_index]
+                                    new_instrument = instrument_ids[current_instrument_index]
                                     player.set_instrument(new_instrument)
                                     player.play_note(60, duration=0.9)  # C4 note for 0.9s 
                                     # store instrument id dynamically to avoid static type checker errors
                                     setattr(right_panel, "current_instrument", new_instrument)
-                                    app_logger.info(f"Instrument: {app_state.instrument_names[app_state.current_instrument_index]}")
-                                    instrument_label.configure(text=f"Instrument: {app_state.instrument_names[app_state.current_instrument_index]}")
-                                    app_state.instrument_scroll_start_x = center_px[0] 
+                                    app_logger.info(f"Instrument: {instrument_names[current_instrument_index]}")
+                                    instrument_label.configure(text=f"Instrument: {instrument_names[current_instrument_index]}")
+                                    instrument_scroll_start_x = center_px[0] 
                         else:
-                            app_state.instrument_scroll_mode = False
+                            instrument_scroll_mode = False
                             
                     # Right Hand: Volume Control===
                     elif hand_label == "Right":
                         if is_pinch:
                             cv.circle(debug_image, center_px, 15, (0, 255, 0), 3) # Green circle
 
-                            if not app_state.pinch_mode:
-                                app_state.pinch_mode = True
-                                app_state.pinch_start_x = center_px[0] # Record start X for horizontal movement
+                            if not pinch_mode:
+                                pinch_mode = True
+                                pinch_start_x = center_px[0] # Record start X for horizontal movement
                             else:
                                 if not player.muted:
-                                    delta_x = center_px[0] - app_state.pinch_start_x
+                                    delta_x = center_px[0] - pinch_start_x
                                     if abs(delta_x) > drag_threshold/20:
 
                                         # Volume sensitivity (drag 1% screen = 1 step)
@@ -218,24 +261,24 @@ def update_frame():
                                         player.volume = max(0.0, min(1.0, new_volume))
 
                                         # Sync last_volume_level with current MIDI player volume
-                                        app_state.last_volume_level = int(player.volume * 100)
+                                        last_volume_level = int(player.volume * 100)
 
-                                        app_logger.debug(f"Volume: {app_state.last_volume_level}%")
+                                        app_logger.debug(f"Volume: {last_volume_level}%")
 
                                 # Always update start position for next drag, even if muted
-                                app_state.pinch_start_x = center_px[0]
+                                pinch_start_x = center_px[0]
 
                             # Draw volume bar on debug image
                             bar_x, bar_y = 10, 85
                             bar_width, bar_height = 150, 10
-                            filled_width = int(bar_width * (app_state.last_volume_level / 100))
+                            filled_width = int(bar_width * (last_volume_level / 100))
                             cv.rectangle(debug_image, (bar_x, bar_y), (bar_x + bar_width, bar_y + bar_height), (50, 50, 50), -1) # Background
                             cv.rectangle(debug_image, (bar_x, bar_y), (bar_x + filled_width, bar_y + bar_height), (0, 255, 0), -1) # Foreground
-                            cv.putText(debug_image, f"Volume: {app_state.last_volume_level}%", (bar_x, bar_y - 10),
+                            cv.putText(debug_image, f"Volume: {last_volume_level}%", (bar_x, bar_y - 10),
                                     cv.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv.LINE_AA)
                         else:
                             cv.circle(debug_image, center_px, 15, (0, 0, 255), 2) # Blue circle when not pinching
-                            app_state.pinch_mode = False # Reset pinch mode 
+                            pinch_mode = False # Reset pinch mode 
                     
                     if player.volume < 0.01 or player.muted:
                         cv.putText(debug_image, "Muted", (debug_image.shape[1] - 50, 15), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 0, cv.LINE_AA)
@@ -256,9 +299,10 @@ def update_frame():
                     total_finger_count += finger_count # Accumulate finger count from all hands
 
                     # Log detected hand info to the UI
-                    if app_state.log_finger_count != finger_count:
+                    global log_finger_count
+                    if log_finger_count != finger_count:
                         app_logger.info(f"Hand: {hand_label}, Fingers: {finger_count}")
-                        app_state.log_finger_count = finger_count
+                        log_finger_count = finger_count
 
                     # Draw annotations on the debug image
                     debug_image = draw_bounding_rect(True, debug_image, brect)
@@ -271,23 +315,24 @@ def update_frame():
                     )
                     
                     current_time = time.time()
+                    global last_finger_count, last_note_time
                     if (
-                        total_finger_count in app_state.note_mapping 
+                        total_finger_count in note_mapping 
                         and 
-                        (total_finger_count != app_state.last_finger_count or current_time - app_state.last_note_time > app_state.note_cooldown)
+                        (total_finger_count != last_finger_count or current_time - last_note_time > note_cooldown)
                         ):
-                        note = app_state.note_mapping[total_finger_count]
+                        note = note_mapping[total_finger_count]
                         try:
                             player.play_note(note, duration=10)
-                            log_note_play(note, total_finger_count, app_state.current_instrument_index)
+                            log_note_play(note, total_finger_count, current_instrument_index)
                             notation_panel.add_gesture(total_finger_count)
                             record_gesture(total_finger_count)
-                            app_state.last_finger_count = total_finger_count
-                            app_state.last_note_time = int(current_time)
+                            last_finger_count = total_finger_count
+                            last_note_time = current_time
                         except Exception as e:
                             print(f"Sound error: {e}")
         else:
-            app_state.point_history.append([0, 0]) # Append dummy point if no hands detected
+            point_history.append([0, 0]) # Append dummy point if no hands detected
             app_logger.debug("No hands detected in frame.")
             player.note_cooldowns.clear()  # Reset if no hands detected
 
@@ -297,7 +342,7 @@ def update_frame():
         app_logger.error(f"Error processing frame: {e}\n{error_info}") # Log detailed error to UI
 
     # Draw point history and FPS on the debug image
-    debug_image = draw_point_history(debug_image, app_state.point_history)
+    debug_image = draw_point_history(debug_image, point_history)
     fps = int(1 / max(0.01, time.time() - frame_start_time)) # Calculate FPS, avoid division by zero
     debug_image = draw_info(debug_image, fps, 0, 0)
 
@@ -306,10 +351,10 @@ def update_frame():
     frame_width = 720
     frame_height = 480
     resized_img = img.resize((frame_width, frame_height))  # PIL resize
+    global video_label, video_label_img
     imgtk = ImageTk.PhotoImage(image=resized_img)
     # store reference in a module-level variable to prevent garbage collection
     # and avoid assigning arbitrary attributes to CTkLabel (static checkers complain)
-    global video_label_img
     video_label_img = imgtk
     if video_label is not None:
         # Only update the UI widget if it exists
@@ -318,10 +363,10 @@ def update_frame():
         app_logger.warning("video_label is None; skipping image update.")
     
     if globals().get("status_label") is not None:
-        if app_state.start_time is None:
+        if start_time is None:
             elapsed = 0
         else:
-            elapsed = int(time.time() - app_state.start_time)
+            elapsed = int(time.time() - start_time)
         status_label.configure(text=f"Status: Running ({elapsed}s)")
     else:
         app_logger.debug("status_label not yet initialized; skipping status update.")
@@ -385,7 +430,7 @@ center_panel.pack(side="left", expand=True)
 # right_panel = ctk.CTkFrame(main_frame, width=300)
 right_panel = ctk.CTkFrame(main_frame, width=300)
 right_panel.pack(side="left", fill="y", padx=(10, 0))
-setattr(right_panel, "current_instrument", app_state.instrument_ids[app_state.current_instrument_index])
+setattr(right_panel, "current_instrument", instrument_ids[current_instrument_index])
 # Ensure recording attributes exist for static analyzers and runtime defaults
 setattr(right_panel, "recording_start_time", 0.0)
 setattr(right_panel, "recording_data", [])
@@ -479,7 +524,7 @@ def playback_recording(index=0, start_time=None):
     delay = max(0, int(delay * 1000))  # ms
 
     def play_event():
-        note = app_state.note_mapping.get(event["gesture"], 60)
+        note = note_mapping.get(event["gesture"], 60)
         old_instr = player.instrument
         player.set_instrument(event["instrument"])
         player.play_note(note, duration=1.5)
@@ -520,7 +565,7 @@ def record_gesture(gesture_id):
         data.append({
             "gesture": gesture_id,
             "time": timestamp,
-            "instrument": app_state.instrument_ids[app_state.current_instrument_index]  # store ID 🎯
+            "instrument": instrument_ids[current_instrument_index]  # store ID 🎯
         })
 
 # --- Add a logging area to the UI --- ((moved to left panel))

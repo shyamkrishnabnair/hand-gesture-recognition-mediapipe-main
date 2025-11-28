@@ -5,7 +5,7 @@ from utils.calculate import calc_bounding_rect, calc_landmark_list
 from utils.draw import draw_info_text, draw_bounding_rect, draw_landmarks
 from utils.pre_process import pre_process_landmark, pre_process_point_history
 from utils.app_state import AppState
-from main import app_logger, instrument_label, player
+# from main import app_logger, instrument_label, player --- this lead to cyclic import line 31, 32, 145-149
 
 def left_hand_label(is_pinch, debug_image, center_px, drag_threshold, player, app_state: AppState):
     if is_pinch:
@@ -28,8 +28,8 @@ def left_hand_label(is_pinch, debug_image, center_px, drag_threshold, player, ap
                 new_instrument = app_state.instrument_ids[app_state.current_instrument_index]
                 player.set_instrument(new_instrument)
                 player.play_note(60, duration=0.9)  # C4 note for 0.9s
-                app_logger.info(f"Instrument: {app_state.instrument_names[app_state.current_instrument_index]}")
-                instrument_label.configure(text=f"Instrument: {app_state.instrument_names[app_state.current_instrument_index]}")
+                # app_logger.info(f"Instrument: {app_state.instrument_names[app_state.current_instrument_index]}")
+                # instrument_label.configure(text=f"Instrument: {app_state.instrument_names[app_state.current_instrument_index]}")
                 app_state.instrument_scroll_start_x = center_px[0]
     else:
         app_state.instrument_scroll_mode = False
@@ -142,11 +142,11 @@ def detect_hands_and_classify(rgb_image, hands, debug_image, app_state):
             cv.putText(debug_image, f"Instrument: {app_state.instrument_names[app_state.current_instrument_index]}", (10, 40), cv.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2, cv.LINE_AA)
 
             if hand_label == "Left":
-                left_hand_label(is_pinch, debug_image, center_px, drag_threshold, player, app_state)
-            elif hand_label == "Right":
-                right_hand_label(is_pinch, center_px, debug_image, app_state, drag_threshold, screen_width)
+                # left_hand_label(is_pinch, debug_image, center_px, drag_threshold, player, app_state)
+            # elif hand_label == "Right":
+            #     right_hand_label(is_pinch, center_px, debug_image, app_state, drag_threshold, screen_width)
 
-            if app_state.player.volume < 0.01 or app_state.player.muted:
+            # if app_state.player.volume < 0.01 or app_state.player.muted:
                 cv.putText(debug_image, "Muted", (debug_image.shape[1] - 50, 15), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 0, cv.LINE_AA)
                 app_state.mute_btn.configure(text="Unmute" if app_state.player.muted else "Mute")
                 app_state.app_logger.info("Muted" if app_state.player.muted else "Unmuted")
