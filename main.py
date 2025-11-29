@@ -6,7 +6,7 @@ cv.setUseOptimized(True)
 cv.setNumThreads(2)
 import mediapipe as mp
 
-import os
+import os, json
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 from PIL import Image, ImageTk
@@ -79,6 +79,10 @@ instrument_names = [
 ]
 instrument_ids = [0, 1, 4, 6, 16, 24, 29, 33, 40, 48, 56, 65, 73, 80, 88]
 log_finger_count = 0
+
+RECORDINGS_DIR = "recordings"
+os.makedirs(RECORDINGS_DIR, exist_ok=True)
+
 
 # Initialize MIDI sound player (no need for .sf2 or external tools)
 player = MidiSoundPlayer()
@@ -169,8 +173,6 @@ def update_frame():
                 for hand_landmarks, handedness in zip(multi_landmarks, multi_handedness):
                     brect = calc_bounding_rect(debug_image, hand_landmarks)
                     landmark_list = calc_landmark_list(debug_image, hand_landmarks)
-                    pre_processed_landmark_list = pre_process_landmark(landmark_list)
-                    pre_processed_point_history_list = pre_process_point_history(debug_image, point_history)
 
                     # Classify finger gesture (dynamic movement)
                     finger_gesture_id = 0
@@ -224,17 +226,21 @@ def update_frame():
 
                                 if abs(delta_x) >= drag_threshold:
                                     if delta_x > 0:
-                                        current_instrument_index = (current_instrument_index + 1) % len(instrument_ids)
+                                        new_index = (current_instrument_index + 1) % len(instrument_ids)
                                     else:
-                                        current_instrument_index = (current_instrument_index - 1) % len(instrument_ids)
+                                        new_index = (current_instrument_index - 1) % len(instrument_ids)
+
+                                    set_instrument_by_index(new_index)
+
+                                    instrument_scroll_start_x = center_px[0]
 
                                     new_instrument = instrument_ids[current_instrument_index]
                                     player.set_instrument(new_instrument)
                                     player.play_note(60, duration=0.9)  # C4 note for 0.9s 
                                     # store instrument id dynamically to avoid static type checker errors
-                                    setattr(right_panel, "current_instrument", new_instrument)
+                                    setattr(recording_panel, "current_instrument", new_instrument)
                                     app_logger.info(f"Instrument: {instrument_names[current_instrument_index]}")
-                                    instrument_label.configure(text=f"Instrument: {instrument_names[current_instrument_index]}")
+                                    # instrument_label.configure(text=f"Instrument: {instrument_names[current_instrument_index]}")
                                     instrument_scroll_start_x = center_px[0] 
                         else:
                             instrument_scroll_mode = False
@@ -380,21 +386,37 @@ def update_frame():
         except Exception:
             pass
 
+"""
+UI BASED ON CUSTOM TKINTER
+"""
+
 app = ctk.CTk()
 app.title("🤖 Hand Gesture Recognition")
-app.geometry("1200x900")
+app.geometry("1200x900+375+30")
 
-title = ctk.CTkLabel(app, text="🤖 Hand Gesture Controller", font=("Segoe UI", 26, "bold"))
+# ================= Row 1 ============================
+title = ctk.CTkLabel(app, text="🤖 Hand Gesture Controller", font=("Segoe UI", 26, "bold")) 
 title.pack(pady=20)
 
-instrument_label = ctk.CTkLabel(app, text="Instrument: Acoustic Grand Piano", font=("Segoe UI", 18))
-instrument_label.pack(pady=5)
+# ================== Row 2: MAIN ROW ==================
+main_row = ctk.CTkFrame(app)
+main_row.pack(fill="x", padx=15, pady=10)
+main_row.configure(height=520)
+main_row.pack_propagate(False)
 
-main_frame = ctk.CTkFrame(app)
-main_frame.pack(fill="both", expand=True, padx=20, pady=10)
+main_row.grid_columnconfigure(0, weight=0)   # Logs
+main_row.grid_columnconfigure(1, weight=1)   # Instrument Selector
+main_row.grid_columnconfigure(2, weight=3)   # Camera
+main_row.grid_columnconfigure(3, weight=2)   # Recording
+main_row.grid_columnconfigure(4, weight=2)   # Recordings list
+
+main_row.grid_rowconfigure(0, weight=1)
+
+# ================== Row 2, Col 1: LEFT PANEL(log and mute) ==================
+left_panel = ctk.CTkFrame(main_row)
+left_panel.grid(row=0, column=0, sticky="nsew", padx=5)
 
 # Left control panel
-left_panel = ctk.CTkFrame(main_frame, width=300)  # made wider so logs fit better
 mute_btn = ctk.CTkButton(left_panel, text="Mute", command=toggle_mute)
 mute_btn.pack(pady=20, padx=10)
 
@@ -406,13 +428,12 @@ log_label = ctk.CTkLabel(log_frame, text="Live Log:", font=("Segoe UI", 12, "bol
 log_label.pack(anchor="nw", padx=(0, 5), pady=(0, 5))
 
 log_textbox = ctk.CTkTextbox(
-    log_frame, width=260, height=400,  # adjust width/height to taste
+    log_frame, 
+    # width=260,
+    height=400,  # adjust width/height to taste
     activate_scrollbars=True, wrap="word", font=("Consolas", 10)
 )
 log_textbox.pack(fill="both", expand=True)
-
-left_panel.pack_propagate(False)
-left_panel.pack(side="left", fill="y", padx=(0, 10))
 
 # --- Configure the standard logging module ---
 log_handler = CTkTextboxHandler(log_textbox)
@@ -420,74 +441,280 @@ formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 log_handler.setFormatter(formatter)
 app_logger.addHandler(log_handler)
 
-# Center for camera
-center_panel = ctk.CTkFrame(main_frame)
-video_label = ctk.CTkLabel(center_panel, text="")
-video_label.pack(padx=20, pady=10, fill="both", expand=True)
-center_panel.pack(side="left", expand=True)
+# ================== Row 2, Col 2: INSTRUMENT PANEL ==================
+instrument_panel = ctk.CTkFrame(main_row, width=280)
+instrument_panel.grid(row=0, column=1, sticky="ns", padx=5)
+instrument_panel.pack_propagate(False)
 
-# Right panel (for future)
-# right_panel = ctk.CTkFrame(main_frame, width=300)
-right_panel = ctk.CTkFrame(main_frame, width=300)
-right_panel.pack(side="left", fill="y", padx=(10, 0))
-setattr(right_panel, "current_instrument", instrument_ids[current_instrument_index])
-# Ensure recording attributes exist for static analyzers and runtime defaults
-setattr(right_panel, "recording_start_time", 0.0)
-setattr(right_panel, "recording_data", [])
-# --- Right Panel: Recording + Playback ---
-recording_label = ctk.CTkLabel(right_panel, text="🎵 Recording Panel", font=("Segoe UI", 16, "bold"))
+instrument_title = ctk.CTkLabel(
+    instrument_panel,
+    text="🎛 Instruments",
+    font=("Segoe UI", 16, "bold")
+)
+instrument_title.pack(pady=(1, 0))
+
+# Scrollable container
+instrument_scroll = ctk.CTkScrollableFrame(
+    instrument_panel,
+    width=260,
+    height=420
+)
+instrument_scroll.pack(
+    # fill="both",
+    # expand=True,
+    padx=5, pady=10)
+
+instrument_buttons = []
+
+# ================== SHARED STATE UPDATE FUNCTION ==================
+def set_instrument_by_index(index):
+    global current_instrument_index
+
+    current_instrument_index = index
+    new_instrument = instrument_ids[index]
+
+    player.set_instrument(new_instrument)
+    player.play_note(60, duration=0.9)
+
+    setattr(recording_panel, "current_instrument", new_instrument)
+
+    app_logger.info(f"Instrument: {instrument_names[index]}")
+
+    update_instrument_ui()
+
+# ================== UI HIGHLIGHT UPDATE ==================
+def update_instrument_ui():
+    for i, btn in enumerate(instrument_buttons):
+        if i == current_instrument_index:
+            btn.configure(
+                fg_color="#00ffaa",   # highlighted
+                text_color="black"
+            )
+        else:
+            btn.configure(
+                fg_color="transparent",
+                text_color="white"
+            )
+
+# ================== CREATE BUTTON LIST ==================
+for i, name in enumerate(instrument_names):
+    btn = ctk.CTkButton(
+        instrument_scroll,
+        text=name,
+        anchor="w",
+        width=240,
+        command=lambda i=i: set_instrument_by_index(i)
+    )
+    btn.pack(pady=3, padx=5)
+    instrument_buttons.append(btn)
+
+# Initial highlight
+update_instrument_ui()
+
+# ================== Row 2, Col 3: CAMERA ==================
+camera_panel = ctk.CTkFrame(main_row)
+camera_panel.grid(row=0, column=2, sticky="nsew", padx=5)
+camera_panel.configure(height=500)
+camera_panel.pack_propagate(True)
+
+# Camera
+video_label = ctk.CTkLabel(camera_panel, text="")
+video_label.pack(padx=10, pady=10, fill="both", expand=True)
+
+# ================== Row 2, Col 4: RECORDNG =================
+recording_panel = ctk.CTkFrame(main_row)
+recording_panel.grid(row=0, column=3, sticky="nsew", padx=5)
+
+setattr(recording_panel, "current_instrument", instrument_ids[current_instrument_index])
+setattr(recording_panel, "recording_start_time", 0.0)
+setattr(recording_panel, "recording_data", [])
+setattr(recording_panel, "selected_recording_data", None)
+setattr(recording_panel, "selected_recording_name", None)
+
+# ================== Row 2, Col 5: RECORDINGS LIBRARY ==================
+recordings_list_panel = ctk.CTkFrame(main_row)
+recordings_list_panel.grid(row=0, column=4, sticky="nsew", padx=5)
+
+recording_label = ctk.CTkLabel(recording_panel, text="🎵 Recording Panel", font=("Segoe UI", 16, "bold"))
 recording_label.pack(pady=10)
 
-recording_status = ctk.CTkLabel(right_panel, text="Status: Idle", fg_color=None)
+recording_status = ctk.CTkLabel(
+    recording_panel,
+    text="Status: Idle",
+    width=260,
+    anchor="w",
+    fg_color=None
+)
 recording_status.pack(pady=5)
 
-setattr(right_panel, "is_recording", False)
+setattr(recording_panel, "is_recording", False)
 
 # Start / Stop Recording buttons
 def start_recording():
     print("Recording started...")
-    setattr(right_panel, "recording_start_time", time.time())
-    recording_status.configure(text="🎵 Recording...")
-    if not getattr(right_panel, 'recording_data', None):
-        setattr(right_panel, 'recording_data', [])  # only create if not exists
-    setattr(right_panel, "is_recording", True)
+
+    # ✅ Clear selected library recording
+    setattr(recording_panel, "selected_recording_data", None)
+    setattr(recording_panel, "selected_recording_name", None)
+
+    highlight_selected_recording(None)
+
+    # ✅ Clear live buffer
+    setattr(recording_panel, 'recording_data', [])
+    setattr(recording_panel, "recording_start_time", time.time())
+    setattr(recording_panel, "is_recording", True)
+
+    recording_status.configure(text="🎵 Recording... ")
 
 def stop_recording():
-    # Placeholder: stop appending
-    setattr(right_panel, "is_recording", False)
-    data_len = len(getattr(right_panel, 'recording_data', []))
+    setattr(recording_panel, "is_recording", False)
+    data_len = len(getattr(recording_panel, 'recording_data', []))
     print("Recording stopped. Captured", data_len, "events")
     recording_status.configure(text=f"Stopped. Captured {data_len} events")
 
-start_record_btn = ctk.CTkButton(right_panel, text="⏺ Start Recording", command=start_recording)
+start_record_btn = ctk.CTkButton(recording_panel, text="⏺ Start Recording", command=start_recording)
 start_record_btn.pack(pady=5, padx=10)
 
-stop_record_btn = ctk.CTkButton(right_panel, text="⏹ Stop Recording", command=stop_recording)
+stop_record_btn = ctk.CTkButton(recording_panel, text="⏹ Stop Recording", command=stop_recording)
 stop_record_btn.pack(pady=5, padx=10)
 
-recordings_frame = ctk.CTkFrame(main_frame, width=150)
-recordings_frame.pack(side="left", fill="y", padx=(10, 0))
+recordings_scroll = ctk.CTkScrollableFrame(
+    recordings_list_panel,
+    width=200,
+    height=420
+)
+recordings_scroll.pack(fill="both", expand=True, padx=5, pady=5)
+recordings_actions = ctk.CTkFrame(recordings_list_panel)
+recordings_actions.pack(fill="x", padx=5, pady=5)
 
-recordings_label = ctk.CTkLabel(recordings_frame, text="Recordings", font=("Segoe UI", 14))
-recordings_label.pack(pady=5)
+delete_btn = ctk.CTkButton(
+    recordings_actions,
+    text="🗑 Delete",
+    width=90,
+    command=lambda: delete_selected_recording()
+)
+delete_btn.pack(side="left", padx=5)
 
-recordings_listbox = ctk.CTkTextbox(recordings_frame, width=140, height=400)
-recordings_listbox.pack(padx=5, pady=5, fill="both", expand=True)
+rename_btn = ctk.CTkButton(
+    recordings_actions,
+    text="✏ Rename",
+    width=90,
+    command=lambda: rename_selected_recording()
+)
+rename_btn.pack(side="left", padx=5)
+
+recording_buttons = []
+
+def delete_selected_recording():
+    name = getattr(recording_panel, "selected_recording_name", None)
+    if not name:
+        recording_status.configure(text="⚠ No recording selected")
+        return
+
+    path = os.path.join(RECORDINGS_DIR, name)
+
+    if os.path.exists(path):
+        os.remove(path)
+
+    # Clear selection
+    setattr(recording_panel, "selected_recording_data", None)
+    setattr(recording_panel, "selected_recording_name", None)
+    highlight_selected_recording(None)
+
+    recording_status.configure(text="🗑 Recording deleted")
+
+    update_recording_list()
+
+def rename_selected_recording():
+    name = getattr(recording_panel, "selected_recording_name", None)
+    if not name:
+        recording_status.configure(text="⚠ No recording selected")
+        return
+
+    popup = ctk.CTkToplevel()
+    popup.title("Rename Recording")
+    popup.geometry("300x120")
+    popup.grab_set()
+
+    label = ctk.CTkLabel(popup, text="New name:")
+    label.pack(pady=5)
+
+    entry = ctk.CTkEntry(popup, width=260)
+    entry.insert(0, name.replace(".json", ""))
+    entry.pack(pady=5)
+
+    def confirm():
+        new_name = entry.get().strip()
+        if not new_name:
+            return
+
+        old_path = os.path.join(RECORDINGS_DIR, name)
+        new_path = os.path.join(RECORDINGS_DIR, new_name + ".json")
+
+        if os.path.exists(new_path):
+            recording_status.configure(text="⚠ Name already exists")
+            popup.destroy()
+            return
+
+        os.rename(old_path, new_path)
+
+        setattr(recording_panel, "selected_recording_name", new_name + ".json")
+
+        recording_status.configure(text=f"Renamed to: {new_name}")
+        popup.destroy()
+
+        update_recording_list()
+        highlight_selected_recording(new_name + ".json")
+
+    confirm_btn = ctk.CTkButton(popup, text="Rename", command=confirm)
+    confirm_btn.pack(pady=8)
 
 def update_recording_list():
-    recordings_listbox.delete("1.0", "end")
-    for f in os.listdir(RECORDINGS_DIR):
-        if f.endswith(".json"):
-            recordings_listbox.insert("end", f + "\n")
+    for btn in recording_buttons:
+        btn.destroy()
+    recording_buttons.clear()
+
+    files = [f for f in os.listdir(RECORDINGS_DIR) if f.endswith(".json")]
+
+    for fname in files:
+        display_name = fname.replace(".json", "")  # ✅ hide extension
+
+        def make_loader(file_name=fname, display=display_name):
+            def load_and_select():
+                with open(os.path.join(RECORDINGS_DIR, file_name), "r") as f:
+                    data = json.load(f)
+
+                setattr(recording_panel, "selected_recording_data", data)
+                setattr(recording_panel, "selected_recording_name", file_name)
+
+                # ✅ Show only clean name in status
+                short = display[:25] + "..." if len(display) > 28 else display
+                recording_status.configure(text=f"Selected: {short}")
+
+                highlight_selected_recording(display)
+            return load_and_select
+
+        btn = ctk.CTkButton(
+            recordings_scroll,
+            text=display_name,
+            anchor="w",
+            width=180,
+            command=make_loader()
+        )
+        btn.pack(pady=2, padx=5)
+        recording_buttons.append(btn)
+update_recording_list()
+
+def highlight_selected_recording(name):
+    for btn in recording_buttons:
+        if btn.cget("text") == name:
+            btn.configure(fg_color="#00ffaa", text_color="black")
+        else:
+            btn.configure(fg_color="transparent", text_color="white")
 
 # save recordings
-import os, json
-
-RECORDINGS_DIR = "recordings"
-os.makedirs(RECORDINGS_DIR, exist_ok=True)
-
 def save_recording(name="recording"):
-    data = getattr(right_panel, 'recording_data', [])
+    data = getattr(recording_panel, 'recording_data', [])
     if not data:
         return
 
@@ -498,69 +725,84 @@ def save_recording(name="recording"):
         json.dump(data, f)
 
     update_recording_list()
+    setattr(recording_panel, "selected_recording_data", None)
+    setattr(recording_panel, "selected_recording_name", None)
+    highlight_selected_recording(None)
 
 
-stop_record_btn = ctk.CTkButton(right_panel, text="Save Recording", command=save_recording)
+stop_record_btn = ctk.CTkButton(recording_panel, text="Save Recording", command=save_recording)
 stop_record_btn.pack(pady=5, padx=10)
 
 # Playback button
 def playback_recording(index=0, start_time=None):
-    data = getattr(right_panel, 'recording_data', [])
+
+    buffer_data = getattr(recording_panel, "recording_data", [])
+    selected_data = getattr(recording_panel, "selected_recording_data", None)
+
+    # ✅ Priority Logic
+    data = buffer_data if buffer_data else selected_data
+
     if not data:
+        recording_status.configure(text="⚠ Nothing to play")
         return
 
     if start_time is None:
         start_time = time.time()
 
     if index >= len(data):
-        if getattr(right_panel, 'playback_loop', False):
-            playback_recording(0)  # restart
+        if getattr(recording_panel, 'playback_loop', False):
+            playback_recording(0)
         else:
             recording_status.configure(text="Playback finished!")
         return
 
     event = data[index]
+
     delay = event["time"] - (time.time() - start_time)
-    delay = max(0, int(delay * 1000))  # ms
+    delay = max(0, int(delay * 1000))
 
     def play_event():
         note = note_mapping.get(event["gesture"], 60)
-        old_instr = player.instrument
-        player.set_instrument(event["instrument"])
+
+        # ✅ Instrument → UI sync
+        if event["instrument"] in instrument_ids:
+            new_index = instrument_ids.index(event["instrument"])
+            set_instrument_by_index(new_index)
+
         player.play_note(note, duration=1.5)
-        player.set_instrument(old_instr)  # restore previous
         notation_panel.add_gesture(event["gesture"])
+
         playback_recording(index + 1, start_time)
 
-    right_panel.after(delay, play_event)
+    recording_panel.after(delay, play_event)
 
-playback_btn = ctk.CTkButton(right_panel, text="▶ Playback", command=playback_recording)
+playback_btn = ctk.CTkButton(recording_panel, text="▶ Playback", command=playback_recording)
 playback_btn.pack(pady=10)
-setattr(right_panel, "playback_loop", False)  # initially off
+setattr(recording_panel, "playback_loop", False)  # initially off
 
 def toggle_loop():
-    current = getattr(right_panel, 'playback_loop', False)
+    current = getattr(recording_panel, 'playback_loop', False)
     new = not current
-    setattr(right_panel, 'playback_loop', new)
+    setattr(recording_panel, 'playback_loop', new)
     loop_btn.configure(text=f"Loop: {'ON' if new else 'OFF'}")
-    loop_btn.configure(text=f"Loop: {'ON' if getattr(right_panel, 'playback_loop', False) else 'OFF'}")
+    loop_btn.configure(text=f"Loop: {'ON' if getattr(recording_panel, 'playback_loop', False) else 'OFF'}")
 
 # Loop toggle button
-loop_btn = ctk.CTkButton(right_panel, text="Loop: OFF", command=toggle_loop)
+loop_btn = ctk.CTkButton(recording_panel, text="Loop: OFF", command=toggle_loop)
 loop_btn.pack(pady=5, padx=10)
 
 
 def record_gesture(gesture_id):
-    if getattr(right_panel, 'is_recording', False):
+    if getattr(recording_panel, 'is_recording', False):
         # Use getattr to safely read the optional attribute and provide a default
-        recording_start = getattr(right_panel, 'recording_start_time', 0.0)
+        recording_start = getattr(recording_panel, 'recording_start_time', 0.0)
         timestamp = time.time() - recording_start
 
         # Ensure recording_data exists and is a list before appending
-        data = getattr(right_panel, 'recording_data', None)
+        data = getattr(recording_panel, 'recording_data', None)
         if data is None:
             data = []
-            setattr(right_panel, 'recording_data', data)
+            setattr(recording_panel, 'recording_data', data)
 
         data.append({
             "gesture": gesture_id,
@@ -568,30 +810,18 @@ def record_gesture(gesture_id):
             "instrument": instrument_ids[current_instrument_index]  # store ID 🎯
         })
 
-# --- Add a logging area to the UI --- ((moved to left panel))
-# log_frame = ctk.CTkFrame(app, fg_color="transparent")
-# log_frame.pack(padx=20, pady=10, fill="x", expand=False) # Pack above the buttons
 
-# log_label = ctk.CTkLabel(log_frame, text="Live Log:", font=("Segoe UI", 12, "bold"))
-# log_label.pack(side="left", padx=(0, 5), anchor="nw") # Label for the log area
-
-# log_textbox = ctk.CTkTextbox(log_frame, width=900, height=150, activate_scrollbars=True, wrap="word", font=("Consolas", 10))
-# log_textbox.pack(side="left", fill="x", expand=True) # The actual textbox for displaying logs
-
-# # --- Configure the standard logging module to output to the CTkTextbox ---
-# log_handler = CTkTextboxHandler(log_textbox)
-# # Define the format for log messages (timestamp - level - message)
-# formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-# log_handler.setFormatter(formatter)
-# app_logger.addHandler(log_handler) # Add our custom handler to the application logger
-
-# --- Bottom area: Notation Panel ---
+# ============== Third Row: Notation Panel ==================
 notation_frame = ctk.CTkFrame(app, fg_color="black")
 notation_frame.pack(padx=20, pady=10, fill="x")
 notation_panel = NotationPanel(notation_frame)
 
-button_frame = ctk.CTkFrame(app, fg_color="#2B2A45")
-button_frame.pack(pady=20) # Pack below the log area
+# ============== Fourth Row: CONTROL PANEL ==================
+footer = ctk.CTkFrame(app)
+footer.pack(fill="x", pady=15)
+
+button_frame = ctk.CTkFrame(footer, fg_color="#2B2A45")
+button_frame.pack(pady=5)
 
 start_btn = ctk.CTkButton(button_frame, text="▶ Start Model", width=160, command=start_camera)
 start_btn.grid(row=0, column=0, padx=10, pady=10)
@@ -605,8 +835,8 @@ refresh_btn.grid(row=1, column=0, padx=10, pady=10)
 exit_btn = ctk.CTkButton(button_frame, text="❌ Exit", width=160, command=quit_app)
 exit_btn.grid(row=1, column=1, padx=10, pady=10)
 
-status_label = ctk.CTkLabel(app, text="Status: Idle", font=("Segoe UI", 14))
-status_label.pack(pady=10)
+status_label = ctk.CTkLabel(footer, text="Status: Idle", font=("Segoe UI", 14))
+status_label.pack(pady=5)
 
 def on_close():
     stop_camera()
