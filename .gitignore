@@ -164,4 +164,5 @@ snippets.py
 tempCodeRunnerFile.py
 *.zip
 .vscode/
+exports/
 export/

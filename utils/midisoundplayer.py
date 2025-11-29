@@ -31,14 +31,15 @@ class MidiSoundPlayer:
     def toggle_mute(self):
         self.muted = not self.muted
 
-    def play_note(self, note: int, duration: float = 0.00):
+    def play_note(self, note: int, duration: float = 0.00, ignore_cooldown = False):
         if self.muted:
             return
 
         duration = duration or self.sustain_time
         now = time.time()
-        if note in self.note_cooldowns and (now - self.note_cooldowns[note]) < self.cooldown_time:
-            return  # Skip due to cooldown
+        if not ignore_cooldown:
+            if note in self.note_cooldowns and (now - self.note_cooldowns[note]) < self.cooldown_time:
+                return
 
         # Stop previous note if still ringing and cooldown not over
         if self.last_note and (now - self.last_note_time) < duration:

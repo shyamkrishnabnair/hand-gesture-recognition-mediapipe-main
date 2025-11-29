@@ -28,7 +28,6 @@ ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("dark-blue")
 
 # Mediapipe setup
-# Try to access mp.solutions.hands via getattr to satisfy static type checkers; fallback to importing from mediapipe.python.solutions
 mp_hands = None
 mp_solutions = getattr(mp, "solutions", None)
 if mp_solutions is not None:
@@ -36,7 +35,6 @@ if mp_solutions is not None:
 
 if mp_hands is None:
     try:
-        # explicit import as a fallback (some distributions expose mediapipe differently)
         from mediapipe.python.solutions import hands as mp_hands  # type: ignore
     except Exception as e:
         raise ImportError("Could not import MediaPipe 'hands' module") from e
@@ -80,9 +78,8 @@ instrument_names = [
 instrument_ids = [0, 1, 4, 6, 16, 24, 29, 33, 40, 48, 56, 65, 73, 80, 88]
 log_finger_count = 0
 
-RECORDINGS_DIR = "recordings"
+RECORDINGS_DIR = "exports/json"
 os.makedirs(RECORDINGS_DIR, exist_ok=True)
-
 
 # Initialize MIDI sound player (no need for .sf2 or external tools)
 player = MidiSoundPlayer()
@@ -210,13 +207,10 @@ def update_frame():
                         pinch_start_x = 0
 
                     global instrument_scroll_mode, instrument_scroll_start_x, instrument_ids, instrument_names, current_instrument_index
-                    # cv.putText(debug_image, f"Instrument: {instrument_names[current_instrument_index]}", (10, 40), cv.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2, cv.LINE_AA)
                     
                     if hand_label == "Left":
                         if is_pinch:
-                            # cv.putText(debug_image, f"Instrument: {instrument_names[current_instrument_index]}", (10, 40), cv.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2, cv.LINE_AA)
-
-                            cv.circle(debug_image, center_px, 15, (255, 255, 0), 3)  # Yellow for left hand
+                            cv.circle(debug_image, center_px, 15, (255, 255, 0), 3)
                             if not instrument_scroll_mode:
                                 instrument_scroll_mode = True
                                 instrument_scroll_start_x = center_px[0]
@@ -229,18 +223,8 @@ def update_frame():
                                         new_index = (current_instrument_index + 1) % len(instrument_ids)
                                     else:
                                         new_index = (current_instrument_index - 1) % len(instrument_ids)
-
-                                    set_instrument_by_index(new_index)
-
-                                    instrument_scroll_start_x = center_px[0]
-
-                                    new_instrument = instrument_ids[current_instrument_index]
-                                    player.set_instrument(new_instrument)
-                                    player.play_note(60, duration=0.9)  # C4 note for 0.9s 
-                                    # store instrument id dynamically to avoid static type checker errors
-                                    setattr(recording_panel, "current_instrument", new_instrument)
-                                    app_logger.info(f"Instrument: {instrument_names[current_instrument_index]}")
-                                    # instrument_label.configure(text=f"Instrument: {instrument_names[current_instrument_index]}")
+                                    # if fire_once("instrument_scroll", 0.5):
+                                    set_instrument_by_index(new_index, confirm=True)
                                     instrument_scroll_start_x = center_px[0] 
                         else:
                             instrument_scroll_mode = False
@@ -289,6 +273,8 @@ def update_frame():
                     if player.volume < 0.01 or player.muted:
                         cv.putText(debug_image, "Muted", (debug_image.shape[1] - 50, 15), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 0, cv.LINE_AA)
                         mute_btn.configure(text="Unmute" if player.muted else "Mute")
+                        # if fire_once("mute_log", 2.0):
+                        # app_logger.info("Muted")
                         app_logger.info("Muted" if player.muted else "Unmuted")
 
                     # Finger Counting Logic
@@ -329,10 +315,29 @@ def update_frame():
                         ):
                         note = note_mapping[total_finger_count]
                         try:
-                            player.play_note(note, duration=10)
-                            log_note_play(note, total_finger_count, current_instrument_index)
-                            notation_panel.add_gesture(total_finger_count)
-                            record_gesture(total_finger_count)
+                            # --- play note (live) only when playback is NOT running ---
+                            if not getattr(recording_panel, "is_playing_back", False):
+                                # playback is NOT running, so play live note
+                                # if fire_once(f"note_{note}", 0.3): # remove this check if the playback acts bad
+                                player.play_note(note, duration=10)
+                                notation_panel.add_gesture(total_finger_count)
+                                log_note_play(note, total_finger_count, current_instrument_index)
+                                record_gesture(total_finger_count)
+                                
+                                # event_time = time.time() - getattr(recording_panel, "timeline_start_time")
+                                # event = {
+                                # "gesture": total_finger_count,
+                                # "time": event_time,
+                                # "instrument": current_instrument_index
+                                # }
+                                # recording_panel.timeline_events.append(event)
+                                # add_timed_event(event, recording_panel.timeline_start_time)
+                                # 💾 5. If user is recording, ALSO append to recording_data
+                                # if getattr(recording_panel, "is_recording", False):
+                                    # recording_panel.recording_data.append(event)
+                            else:
+                                # playback *is* running, skip live note
+                                print("Skipping live note because playback is running!")
                             last_finger_count = total_finger_count
                             last_note_time = current_time
                         except Exception as e:
@@ -441,7 +446,7 @@ formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 log_handler.setFormatter(formatter)
 app_logger.addHandler(log_handler)
 
-# ================== Row 2, Col 2: INSTRUMENT PANEL ==================
+# ================== Row 2, Col 2: INSTRUMENT PANEL ================
 instrument_panel = ctk.CTkFrame(main_row, width=280)
 instrument_panel.grid(row=0, column=1, sticky="ns", padx=5)
 instrument_panel.pack_propagate(False)
@@ -459,22 +464,20 @@ instrument_scroll = ctk.CTkScrollableFrame(
     width=260,
     height=420
 )
-instrument_scroll.pack(
-    # fill="both",
-    # expand=True,
-    padx=5, pady=10)
+instrument_scroll.pack(padx=5, pady=10)
 
 instrument_buttons = []
 
 # ================== SHARED STATE UPDATE FUNCTION ==================
-def set_instrument_by_index(index):
+def set_instrument_by_index(index, confirm=True):
     global current_instrument_index
 
     current_instrument_index = index
     new_instrument = instrument_ids[index]
 
     player.set_instrument(new_instrument)
-    player.play_note(60, duration=0.9)
+    if confirm and not getattr(recording_panel, "is_playing_back", False):
+        player.play_note(60, duration=0.9, ignore_cooldown=True)
 
     setattr(recording_panel, "current_instrument", new_instrument)
 
@@ -521,15 +524,22 @@ camera_panel.pack_propagate(True)
 video_label = ctk.CTkLabel(camera_panel, text="")
 video_label.pack(padx=10, pady=10, fill="both", expand=True)
 
-# ================== Row 2, Col 4: RECORDNG =================
+# ================== Row 2, Col 4: RECORDNG ==================
 recording_panel = ctk.CTkFrame(main_row)
 recording_panel.grid(row=0, column=3, sticky="nsew", padx=5)
-
 setattr(recording_panel, "current_instrument", instrument_ids[current_instrument_index])
 setattr(recording_panel, "recording_start_time", 0.0)
 setattr(recording_panel, "recording_data", [])
 setattr(recording_panel, "selected_recording_data", None)
 setattr(recording_panel, "selected_recording_name", None)
+# class RecordingPanel(ctk.CTkFrame):
+#     def __init__(self, master, **kwargs):
+#         super().__init__(master, **kwargs)
+#         self.is_playing_back: bool = False
+#         # self.timeline_events: list[dict] = []
+#         # self.timeline_start_time: float = 0.0
+#         self.is_recording: bool = False
+#         self.playback_loop: bool = False
 
 # ================== Row 2, Col 5: RECORDINGS LIBRARY ==================
 recordings_list_panel = ctk.CTkFrame(main_row)
@@ -724,18 +734,69 @@ def save_recording(name="recording"):
     with open(path, "w") as f:
         json.dump(data, f)
 
+    pdf_dir = "exports/pdf"
+    os.makedirs(pdf_dir, exist_ok=True)
+    pdf_path = os.path.join(pdf_dir, f"{name}_{timestamp}.pdf")
+
     update_recording_list()
+    # export_notation_pdf(data, notation_panel, pdf_path)
+    # print("Saved exports: JSON & PDF")
     setattr(recording_panel, "selected_recording_data", None)
     setattr(recording_panel, "selected_recording_name", None)
     highlight_selected_recording(None)
 
+# def add_timed_event(self, event):
+#     # diff in seconds from current
+#     # negative = future (don’t draw)
+#     # positive = should be on screen
+#     now = time.time() - recording_panel.timeline_start_time
+#     age = now - event["time"]
+#     # convert age into X offset
+#     # same scroll speed as PDF spacing
+#     x = self.canvas.winfo_width() - age * self.scroll_speed_px_per_sec
+#     symbol = self.get_note_symbol(event["gesture"])
+#     y = self.get_note_y(event["gesture"])
+#     text_id = self.canvas.create_text(x, y, text=symbol, fill="white", font=("Segoe UI", 20, "bold"))
+#     self.events.append((text_id, event))
+# def export_notation_pdf(recording_data, notation_panel, file_path):
+#     # Import reportlab lazily so missing optional dependency doesn't break module import.
+#     try:
+#         from reportlab.pdfgen import canvas #type: ignore
+#         from reportlab.lib.pagesizes import A4, landscape #type: ignore
+#     except Exception:
+#         app_logger.error("reportlab is not installed; cannot export PDF. Install it with: pip install reportlab")
+#         raise RuntimeError("reportlab is required to export PDF. Install it with: pip install reportlab")
+#     c = canvas.Canvas(file_path, pagesize=landscape(A4))
+#     width, height = landscape(A4)
+#     # draw staff lines
+#     staff_y = [100, 115, 130, 145, 160]
+#     for y in staff_y:
+#         c.line(50, y, width - 50, y)
+#     x = 60
+#     spacing = 35  # how far each note is horizontally
+#     for event in recording_data:
+#         gesture = event["gesture"]
+#         symbol = notation_panel.get_note_symbol(gesture)
+#         y = notation_panel.get_note_y(gesture)
+#         # PDF coordinate system starts bottom-left, so adjust:
+#         pdf_y = height - (y + 200)
+#         c.setFont("Helvetica-Bold", 24)
+#         c.drawString(x, pdf_y, symbol)
+#         x += spacing
+#         # If x exceeds page, create new page
+#         if x > width - 60:
+#             c.showPage()
+#             x = 60
+#             for y2 in staff_y:
+#                 c.line(50, y2, width - 50, y2)
+#     c.save()
 
 stop_record_btn = ctk.CTkButton(recording_panel, text="Save Recording", command=save_recording)
 stop_record_btn.pack(pady=5, padx=10)
 
 # Playback button
 def playback_recording(index=0, start_time=None):
-
+    setattr(recording_panel, "is_playing_back", True)
     buffer_data = getattr(recording_panel, "recording_data", [])
     selected_data = getattr(recording_panel, "selected_recording_data", None)
 
@@ -744,6 +805,8 @@ def playback_recording(index=0, start_time=None):
 
     if not data:
         recording_status.configure(text="⚠ Nothing to play")
+        setattr(recording_panel, "is_playing_back", False)
+        app_logger.info("Playback finished")
         return
 
     if start_time is None:
@@ -754,6 +817,8 @@ def playback_recording(index=0, start_time=None):
             playback_recording(0)
         else:
             recording_status.configure(text="Playback finished!")
+            setattr(recording_panel, "is_playing_back", False)
+            app_logger.info("Playback finished")
         return
 
     event = data[index]
@@ -767,10 +832,12 @@ def playback_recording(index=0, start_time=None):
         # ✅ Instrument → UI sync
         if event["instrument"] in instrument_ids:
             new_index = instrument_ids.index(event["instrument"])
-            set_instrument_by_index(new_index)
+            set_instrument_by_index(new_index, confirm=False) # confirm = false will not play the ping
 
         player.play_note(note, duration=1.5)
         notation_panel.add_gesture(event["gesture"])
+
+        # add_timed_event(event, recording_panel.timeline_start_time)
 
         playback_recording(index + 1, start_time)
 

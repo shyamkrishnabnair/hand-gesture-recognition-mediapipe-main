@@ -5,7 +5,7 @@ import time
 from typing import Any, Dict
 
 def logging():
-    log_dir = "logs"
+    log_dir = "exports/logs"
     os.makedirs(log_dir, exist_ok=True)
 
     existing_logs = [f for f in os.listdir(log_dir) if f.startswith("log") and f.endswith(".log")]
