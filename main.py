@@ -14,7 +14,6 @@ import customtkinter as ctk
 
 # Model imports
 from utils.calculate import calc_bounding_rect, calc_landmark_list
-from utils.pre_process import pre_process_landmark, pre_process_point_history
 from utils.log import logging as custom_logging
 from utils.log import log_note_play
 from utils.draw import draw_info_text, draw_bounding_rect, draw_point_history, draw_info, draw_landmarks
@@ -722,6 +721,48 @@ def highlight_selected_recording(name):
         else:
             btn.configure(fg_color="transparent", text_color="white")
 
+def export_notation_pdf(recording_data, notation_panel, file_path):
+    # Import reportlab lazily so missing optional dependency doesn't break module import.
+    try:
+        from reportlab.pdfgen import canvas  # type: ignore
+        from reportlab.lib.pagesizes import A4, landscape  # type: ignore
+    except Exception:
+        app_logger.error("reportlab is not installed; cannot export PDF. Install it with: pip install reportlab")
+        raise RuntimeError("reportlab is required to export PDF. Install it with: pip install reportlab")
+    
+    c = canvas.Canvas(file_path, pagesize=landscape(A4))
+    width, height = landscape(A4)
+    
+    # draw staff lines
+    staff_y = [100, 115, 130, 145, 160]
+    for y in staff_y:
+        c.line(50, y, width - 50, y)
+    
+    x = 60
+    spacing = 35  # how far each note is horizontally
+    
+    for event in recording_data:
+        gesture = event["gesture"]
+        symbol = notation_panel.get_note_symbol(gesture)
+        y = notation_panel.get_note_y(gesture)
+        
+        # PDF coordinate system starts bottom-left, so adjust:
+        pdf_y = height - (y + 200)
+        
+        c.setFont("Helvetica-Bold", 24)
+        c.drawString(x, pdf_y, symbol)
+        
+        x += spacing
+        
+        # If x exceeds page, create new page
+        if x > width - 60:
+            c.showPage()
+            x = 60
+            for y2 in staff_y:
+                c.line(50, y2, width - 50, y2)
+    
+    c.save()
+
 # save recordings
 def save_recording(name="recording"):
     data = getattr(recording_panel, 'recording_data', [])
@@ -738,16 +779,21 @@ def save_recording(name="recording"):
     os.makedirs(pdf_dir, exist_ok=True)
     pdf_path = os.path.join(pdf_dir, f"{name}_{timestamp}.pdf")
 
+    try:
+        export_notation_pdf(data, notation_panel, pdf_path)
+        app_logger.info("Saved exports: JSON & PDF")
+    except Exception as e:
+        app_logger.error(f"Failed to export PDF: {e}")
+        app_logger.info("Saved JSON only (PDF export failed)")
+
     update_recording_list()
-    # export_notation_pdf(data, notation_panel, pdf_path)
-    # print("Saved exports: JSON & PDF")
     setattr(recording_panel, "selected_recording_data", None)
     setattr(recording_panel, "selected_recording_name", None)
     highlight_selected_recording(None)
 
 # def add_timed_event(self, event):
 #     # diff in seconds from current
-#     # negative = future (don’t draw)
+#     # negative = future (don't draw)
 #     # positive = should be on screen
 #     now = time.time() - recording_panel.timeline_start_time
 #     age = now - event["time"]
@@ -758,38 +804,6 @@ def save_recording(name="recording"):
 #     y = self.get_note_y(event["gesture"])
 #     text_id = self.canvas.create_text(x, y, text=symbol, fill="white", font=("Segoe UI", 20, "bold"))
 #     self.events.append((text_id, event))
-# def export_notation_pdf(recording_data, notation_panel, file_path):
-#     # Import reportlab lazily so missing optional dependency doesn't break module import.
-#     try:
-#         from reportlab.pdfgen import canvas #type: ignore
-#         from reportlab.lib.pagesizes import A4, landscape #type: ignore
-#     except Exception:
-#         app_logger.error("reportlab is not installed; cannot export PDF. Install it with: pip install reportlab")
-#         raise RuntimeError("reportlab is required to export PDF. Install it with: pip install reportlab")
-#     c = canvas.Canvas(file_path, pagesize=landscape(A4))
-#     width, height = landscape(A4)
-#     # draw staff lines
-#     staff_y = [100, 115, 130, 145, 160]
-#     for y in staff_y:
-#         c.line(50, y, width - 50, y)
-#     x = 60
-#     spacing = 35  # how far each note is horizontally
-#     for event in recording_data:
-#         gesture = event["gesture"]
-#         symbol = notation_panel.get_note_symbol(gesture)
-#         y = notation_panel.get_note_y(gesture)
-#         # PDF coordinate system starts bottom-left, so adjust:
-#         pdf_y = height - (y + 200)
-#         c.setFont("Helvetica-Bold", 24)
-#         c.drawString(x, pdf_y, symbol)
-#         x += spacing
-#         # If x exceeds page, create new page
-#         if x > width - 60:
-#             c.showPage()
-#             x = 60
-#             for y2 in staff_y:
-#                 c.line(50, y2, width - 50, y2)
-#     c.save()
 
 stop_record_btn = ctk.CTkButton(recording_panel, text="Save Recording", command=save_recording)
 stop_record_btn.pack(pady=5, padx=10)
