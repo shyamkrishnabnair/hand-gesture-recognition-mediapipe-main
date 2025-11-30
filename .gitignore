@@ -164,5 +164,8 @@ snippets.py
 tempCodeRunnerFile.py
 *.zip
 .vscode/
-exports/
+exports/logs/
 export/
+exports/json/recording_*.json
+exports/pdf/recording_*.pdf
+modeled/exports
