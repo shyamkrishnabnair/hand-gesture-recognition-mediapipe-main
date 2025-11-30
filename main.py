@@ -74,6 +74,10 @@ note_mapping = {
     9: 74,  # D5
     10: 76  # E5
 }
+midi_to_note = {
+    60: "C4", 62: "D4", 64: "E4", 65: "F4", 67: "G4",
+    69: "A4", 71: "B4", 72: "C5", 74: "D5", 76: "E5"
+}
 instrument_names = [
     "Acoustic Grand Piano 🎹", "Bright Piano 🎹", "Electric Piano 🎹", "Harpsichord 🎹", "Drawbar Organ 🎹", "Acoustic Guitar 🎸", "Overdriven Guitar 🎸", "Bass Guitar 🎸", "Violin 🎻", "String Ensemble 🎻", "Trumpet 🎺", "Saxophone 🎷", "Flute 🎶", "Synth Lead 🎹", "Synth Pad 🎹"
 ]
@@ -508,7 +512,7 @@ def update_instrument_ui():
     for i, btn in enumerate(instrument_buttons):
         if i == current_instrument_index:
             btn.configure(
-                fg_color="#00ffaa",   # highlighted
+                fg_color="#00ffaa",
                 text_color="black"
             )
         else:
@@ -573,13 +577,13 @@ setattr(recording_panel, "is_recording", False)
 def start_recording():
     print("Recording started...")
 
-    # ✅ Clear selected library recording
+    # Clear selected library recording
     setattr(recording_panel, "selected_recording_data", None)
     setattr(recording_panel, "selected_recording_name", None)
 
     highlight_selected_recording(None)
 
-    # ✅ Clear live buffer
+    # Clear live buffer
     setattr(recording_panel, 'recording_data', [])
     setattr(recording_panel, "recording_start_time", time.time())
     setattr(recording_panel, "is_recording", True)
@@ -819,6 +823,8 @@ def export_notation_pdf(recording_data, notation_panel, file_path):
     STAFF_BLOCK_HEIGHT = 120  # ← VERTICAL HEIGHT PER STAFF SYSTEM
     LEFT_INFO_MARGIN = 90     # ← INSTRUMENT NAME / TIME SIGNATURE ZONE
     NOTE_SPACING = 35         # ← HORIZONTAL SPACE BETWEEN NOTES
+    # INSTRUMENT_MARKER_SPACING = 50  # extra gap after instrument change
+    SEPARATOR_GAP = 18
 
     c = canvas.Canvas(file_path, pagesize=landscape(A4))
     width, height = landscape(A4)
@@ -830,28 +836,84 @@ def export_notation_pdf(recording_data, notation_panel, file_path):
 
     current_staff_index = 0
     x = LEFT_INFO_MARGIN
+    last_instrument = None
 
     def draw_staff_system(staff_index):
-        """Draw one 5-line staff system at a given vertical index."""
         staff_top_y = PAGE_TOP_MARGIN + staff_index * STAFF_BLOCK_HEIGHT
-
-        # ✅ FUTURE ZONE: Instrument names, tempo, time signature go here
-        # Example later:
-        # c.drawString(15, height - (staff_top_y + 40), "Piano")
 
         for offset in local_staff_offsets:
             y = height - (staff_top_y + offset)
             c.line(LEFT_INFO_MARGIN, y, width - 50, y)
 
-    # Draw initial page staff systems
+    # Draw initial staff grid
     for i in range(STAFFS_PER_PAGE):
         draw_staff_system(i)
 
     for event in recording_data:
         gesture = event.get("gesture")
-        if gesture is None:
-            continue  # Safety against malformed data
+        instrument = event.get("instrument")
 
+        if gesture is None:
+            continue
+
+        # ==============================================
+        #  FULL-WIDTH SEPARATOR ON INSTRUMENT CHANGE   #
+        # ==============================================
+        if instrument != last_instrument:
+            # staff_top_y = PAGE_TOP_MARGIN + current_staff_index * STAFF_BLOCK_HEIGHT
+            # separator_y = height - (staff_top_y + max(local_staff_offsets) + SEPARATOR_GAP)
+            # full-width separator line
+            # c.setLineWidth(1.2)
+            # c.line(LEFT_INFO_MARGIN, separator_y, width - 50, separator_y)
+
+            # # instrument ID at bottom-right of staff block
+            # c.setFont("Helvetica-Bold", 11)
+            # c.drawString(
+            #     width - 120,
+            #     separator_y - 12,
+            #     f"| {instrument}"
+            # )
+            staff_top_y = PAGE_TOP_MARGIN + current_staff_index * STAFF_BLOCK_HEIGHT
+
+            staff_bottom_y = staff_top_y + max(local_staff_offsets) + 20
+            staff_top_line_y = staff_top_y + min(local_staff_offsets) - 20
+
+            pdf_top = height - staff_top_line_y
+            pdf_bottom = height - staff_bottom_y
+
+            # ==========================
+            # ✅ LINEAR TIMELINE DIVIDER (NO OVERLAP, EVER)
+            # ==========================
+            staff_top_y = PAGE_TOP_MARGIN + current_staff_index * STAFF_BLOCK_HEIGHT
+
+            staff_bottom_y = staff_top_y + max(local_staff_offsets) + 20
+            staff_top_line_y = staff_top_y + min(local_staff_offsets) - 20
+
+            pdf_top = height - staff_top_line_y
+            pdf_bottom = height - staff_bottom_y
+
+            separator_x = x   # ✅ THIS IS THE KEY FIX
+
+            # Draw the vertical divider at the CURRENT timeline position
+            c.setLineWidth(1.4)
+            c.line(separator_x, pdf_bottom, separator_x, pdf_top)
+
+            # Draw instrument ID next to the divider (timeline-aligned)
+            c.setFont("Helvetica-Bold", 12)
+            c.drawString(
+                separator_x + 4,
+                pdf_bottom + 4,
+                str(instrument)
+            )
+
+            # ✅ Advance timeline so notes start AFTER the divider
+            x += 18   # divider width + breathing space
+
+            last_instrument = instrument
+
+        # ==========================
+        # DRAW NOTES
+        # ==========================
         symbol = notation_panel.get_note_symbol(gesture)
         ui_y = notation_panel.get_note_y(gesture)
 
