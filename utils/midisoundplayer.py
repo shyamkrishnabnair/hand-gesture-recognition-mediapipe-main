@@ -14,9 +14,6 @@ class MidiSoundPlayer:
         self.volume = 1.0
         self.sustain_time = sustain_time
 
-        self.note_cooldowns = {}  # note: last_played_time
-        self.cooldown_time = 2.5  # 2.5 sec cooldown per note (tweakable)
-
         self.last_note = None
         self.last_note_time = 0
         self.playing_chords = set()
@@ -37,11 +34,8 @@ class MidiSoundPlayer:
 
         duration = duration or self.sustain_time
         now = time.time()
-        if not ignore_cooldown:
-            if note in self.note_cooldowns and (now - self.note_cooldowns[note]) < self.cooldown_time:
-                return
 
-        # Stop previous note if still ringing and cooldown not over
+        # Stop previous note if still ringing
         if self.last_note and (now - self.last_note_time) < duration:
             self.player.note_off(self.last_note, 127)
 
@@ -50,7 +44,6 @@ class MidiSoundPlayer:
         velocity = max(0, min(127, velocity))  # Clamp between 0–127
         self.player.note_on(note, velocity)
         
-        self.note_cooldowns[note] = now
         self.last_note = note
         self.last_note_time = now
 

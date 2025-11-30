@@ -1,4 +1,5 @@
 #main.py
+from typing import Any
 import sys, copy, time, subprocess, logging
 from collections import deque
 import cv2 as cv
@@ -45,11 +46,13 @@ running = False
 cap = None
 start_time = None
 pinch_mode = False
-point_history = deque(maxlen=16)
-finger_gesture_history = deque(maxlen=16)
+point_history = deque[Any](maxlen=16)
+finger_gesture_history = deque[Any](maxlen=16)
 last_finger_count = 0
 last_note_time = 0
-note_cooldown = 0.5  # seconds between two notes
+note_cooldown = 0.5  # seconds between two notes (global cooldown for audio, notation, and recording)
+per_note_cooldown = 2.5  # seconds before same note can play again (per-note cooldown)
+note_last_played = {}  # Dictionary to track when each note was last played: {note: timestamp}
 last_volume_level = 50
 is_muted = False
 pinch_start_x = 0
@@ -304,23 +307,45 @@ def update_frame():
                         handedness,
                         finger_count,
                     )
+                
+                # NOTE: Cooldown check and note playing moved OUTSIDE the hand loop
+                # This ensures we only check/play once per frame, not once per hand
+                # This fixes the spam issue when two hands are detected
+                current_time = time.time()
+                global last_finger_count, last_note_time, per_note_cooldown, note_last_played
+                
+                # Global cooldown check: trigger when finger count changes OR cooldown passed
+                finger_count_changed = total_finger_count != last_finger_count
+                note_cooldown_passed = current_time - last_note_time > note_cooldown
+                
+                if (
+                    total_finger_count in note_mapping 
+                    and (finger_count_changed or note_cooldown_passed)
+                    ):
+                    note = note_mapping[total_finger_count]
                     
-                    current_time = time.time()
-                    global last_finger_count, last_note_time
-                    if (
-                        total_finger_count in note_mapping 
-                        and 
-                        (total_finger_count != last_finger_count or current_time - last_note_time > note_cooldown)
-                        ):
-                        note = note_mapping[total_finger_count]
+                    # Per-note cooldown check: same note can't play until it changes OR per-note cooldown passes
+                    note_cooldown_passed_check = (
+                        note not in note_last_played or 
+                        finger_count_changed or 
+                        (current_time - note_last_played[note]) >= per_note_cooldown
+                    )
+                    
+                    if note_cooldown_passed_check:
                         try:
                             # --- play note (live) only when playback is NOT running ---
                             if not getattr(recording_panel, "is_playing_back", False):
                                 # playback is NOT running, so play live note
-                                # if fire_once(f"note_{note}", 0.3): # remove this check if the playback acts bad
                                 player.play_note(note, duration=10)
+                                
+                                # Update per-note cooldown tracker
+                                note_last_played[note] = current_time
+                                
+                                # Add gesture to notation panel - uses same per-note cooldown
                                 notation_panel.add_gesture(total_finger_count)
+                                
                                 log_note_play(note, total_finger_count, current_instrument_index)
+                                # Record gesture - uses same per-note cooldown
                                 record_gesture(total_finger_count)
                                 
                                 # event_time = time.time() - getattr(recording_panel, "timeline_start_time")
@@ -344,7 +369,6 @@ def update_frame():
         else:
             point_history.append([0, 0]) # Append dummy point if no hands detected
             app_logger.debug("No hands detected in frame.")
-            player.note_cooldowns.clear()  # Reset if no hands detected
 
     except Exception as e:
         import traceback
@@ -420,11 +444,7 @@ main_row.grid_rowconfigure(0, weight=1)
 left_panel = ctk.CTkFrame(main_row)
 left_panel.grid(row=0, column=0, sticky="nsew", padx=5)
 
-# Left control panel
-mute_btn = ctk.CTkButton(left_panel, text="Mute", command=toggle_mute)
-mute_btn.pack(pady=20, padx=10)
-
-# --- Add a logging area to the left panel (second column after mute) ---
+# --- Add a logging area to the left panel ---
 log_frame = ctk.CTkFrame(left_panel, fg_color="transparent")
 log_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
 
@@ -433,11 +453,11 @@ log_label.pack(anchor="nw", padx=(0, 5), pady=(0, 5))
 
 log_textbox = ctk.CTkTextbox(
     log_frame, 
-    # width=260,
-    height=400,  # adjust width/height to taste
+    width=260,
+    height=280,
     activate_scrollbars=True, wrap="word", font=("Consolas", 10)
 )
-log_textbox.pack(fill="both", expand=True)
+log_textbox.pack(fill="x", expand=False)
 
 # --- Configure the standard logging module ---
 log_handler = CTkTextboxHandler(log_textbox)
@@ -457,7 +477,6 @@ instrument_title = ctk.CTkLabel(
 )
 instrument_title.pack(pady=(1, 0))
 
-# Scrollable container
 instrument_scroll = ctk.CTkScrollableFrame(
     instrument_panel,
     width=260,
@@ -531,14 +550,6 @@ setattr(recording_panel, "recording_start_time", 0.0)
 setattr(recording_panel, "recording_data", [])
 setattr(recording_panel, "selected_recording_data", None)
 setattr(recording_panel, "selected_recording_name", None)
-# class RecordingPanel(ctk.CTkFrame):
-#     def __init__(self, master, **kwargs):
-#         super().__init__(master, **kwargs)
-#         self.is_playing_back: bool = False
-#         # self.timeline_events: list[dict] = []
-#         # self.timeline_start_time: float = 0.0
-#         self.is_recording: bool = False
-#         self.playback_loop: bool = False
 
 # ================== Row 2, Col 5: RECORDINGS LIBRARY ==================
 recordings_list_panel = ctk.CTkFrame(main_row)
@@ -586,6 +597,72 @@ start_record_btn.pack(pady=5, padx=10)
 
 stop_record_btn = ctk.CTkButton(recording_panel, text="⏹ Stop Recording", command=stop_recording)
 stop_record_btn.pack(pady=5, padx=10)
+
+# Per-note cooldown control (moved to left panel under logs)
+cooldown_frame = ctk.CTkFrame(left_panel, fg_color="transparent", width=260)
+cooldown_frame.pack(pady=(5, 10), padx=10, fill="x")
+cooldown_frame.pack_propagate(False)  # Prevent children from resizing frame
+
+cooldown_label = ctk.CTkLabel(
+    cooldown_frame, 
+    text="Per-Note Cooldown:", 
+    font=("Segoe UI", 12, "bold")
+)
+cooldown_label.pack(pady=(5, 5))
+
+cooldown_value_label = ctk.CTkLabel(
+    cooldown_frame,
+    text=f"{per_note_cooldown}s",
+    font=("Segoe UI", 14),
+    fg_color="transparent"
+)
+cooldown_value_label.pack(pady=(0, 5))
+
+def update_per_note_cooldown(value):
+    global per_note_cooldown
+    per_note_cooldown = float(value)
+
+    cooldown_value_label.configure(text=f"{per_note_cooldown}s")
+    app_logger.info(f"Per-note cooldown set to {per_note_cooldown}s")
+    
+    # Update button highlighting - fix float comparison issue
+    for i, btn in enumerate(cooldown_buttons):
+        # Use abs() for float comparison to handle precision issues
+        if abs(cooldown_values[i] - per_note_cooldown) < 0.01:
+            btn.configure(
+                fg_color="#00ffaa",
+                text_color="black"
+            )
+        else:
+            btn.configure(
+                fg_color="#2b2b2b",
+                text_color="white"
+            )
+
+# Cooldown buttons (0.5s increments from 0.5 to 3.5)
+cooldown_buttons_frame = ctk.CTkFrame(cooldown_frame, fg_color="transparent")
+cooldown_buttons_frame.pack(pady=5, padx=5)
+
+cooldown_values = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5]  # Removed 4.0, 4.5, 5.0
+cooldown_buttons = []
+
+for i, val in enumerate(cooldown_values):
+    btn = ctk.CTkButton(
+        cooldown_buttons_frame,
+        text=f"{val:.1f}s",
+        width=50,
+        height=30,
+        command=lambda v=val: update_per_note_cooldown(v),
+        font=("Segoe UI", 10)
+    )
+    btn.grid(row=i // 4, column=i % 4, padx=2, pady=2)
+    cooldown_buttons.append(btn)
+
+for i, btn in enumerate(cooldown_buttons):
+    if abs(cooldown_values[i] - per_note_cooldown) < 0.01:
+        btn.configure(fg_color="#00ffaa", text_color="black")
+
+update_per_note_cooldown(per_note_cooldown)
 
 recordings_scroll = ctk.CTkScrollableFrame(
     recordings_list_panel,
@@ -871,6 +948,10 @@ def toggle_loop():
 # Loop toggle button
 loop_btn = ctk.CTkButton(recording_panel, text="Loop: OFF", command=toggle_loop)
 loop_btn.pack(pady=5, padx=10)
+
+# Mute button (moved from left panel, positioned at bottom with extra top margin for visual separation)
+mute_btn = ctk.CTkButton(recording_panel, text="Mute", command=toggle_mute)
+mute_btn.pack(pady=(25, 10), padx=10)  # Extra top margin (25) to differentiate from other buttons
 
 
 def record_gesture(gesture_id):
