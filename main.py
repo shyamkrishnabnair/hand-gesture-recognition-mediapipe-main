@@ -799,7 +799,14 @@ def highlight_selected_recording(name):
             btn.configure(fg_color="transparent", text_color="white")
 
 def export_notation_pdf(recording_data, notation_panel, file_path):
-    # Import reportlab lazily so missing optional dependency doesn't break module import.
+    """
+    Page 1:
+    ├── Staff 0  ← events flow left → right
+    ├── Staff 1  ← when x overflows → jump here
+    ├── Staff 2
+    ├── Staff 3
+    → New page after Staff 3 fills
+    """
     try:
         from reportlab.pdfgen import canvas  # type: ignore
         from reportlab.lib.pagesizes import A4, landscape  # type: ignore
@@ -807,37 +814,70 @@ def export_notation_pdf(recording_data, notation_panel, file_path):
         app_logger.error("reportlab is not installed; cannot export PDF. Install it with: pip install reportlab")
         raise RuntimeError("reportlab is required to export PDF. Install it with: pip install reportlab")
     
+    STAFFS_PER_PAGE = 4
+    PAGE_TOP_MARGIN = 60      # ← SPACE for TITLE / TEMPO / METADATA
+    STAFF_BLOCK_HEIGHT = 120  # ← VERTICAL HEIGHT PER STAFF SYSTEM
+    LEFT_INFO_MARGIN = 90     # ← INSTRUMENT NAME / TIME SIGNATURE ZONE
+    NOTE_SPACING = 35         # ← HORIZONTAL SPACE BETWEEN NOTES
+
     c = canvas.Canvas(file_path, pagesize=landscape(A4))
     width, height = landscape(A4)
-    
-    # draw staff lines
-    staff_y = [100, 115, 130, 145, 160]
-    for y in staff_y:
-        c.line(50, y, width - 50, y)
-    
-    x = 60
-    spacing = 35  # how far each note is horizontally
-    
+
+    # UI-derived staff line offsets (relative inside one staff block)
+    ui_staff_offsets = notation_panel.staff_y_positions
+    ui_top = min(ui_staff_offsets)
+    local_staff_offsets = [y - ui_top for y in ui_staff_offsets]
+
+    current_staff_index = 0
+    x = LEFT_INFO_MARGIN
+
+    def draw_staff_system(staff_index):
+        """Draw one 5-line staff system at a given vertical index."""
+        staff_top_y = PAGE_TOP_MARGIN + staff_index * STAFF_BLOCK_HEIGHT
+
+        # ✅ FUTURE ZONE: Instrument names, tempo, time signature go here
+        # Example later:
+        # c.drawString(15, height - (staff_top_y + 40), "Piano")
+
+        for offset in local_staff_offsets:
+            y = height - (staff_top_y + offset)
+            c.line(LEFT_INFO_MARGIN, y, width - 50, y)
+
+    # Draw initial page staff systems
+    for i in range(STAFFS_PER_PAGE):
+        draw_staff_system(i)
+
     for event in recording_data:
-        gesture = event["gesture"]
+        gesture = event.get("gesture")
+        if gesture is None:
+            continue  # Safety against malformed data
+
         symbol = notation_panel.get_note_symbol(gesture)
-        y = notation_panel.get_note_y(gesture)
-        
-        # PDF coordinate system starts bottom-left, so adjust:
-        pdf_y = height - (y + 200)
-        
+        ui_y = notation_panel.get_note_y(gesture)
+
+        # Convert UI Y to local staff Y
+        local_note_y = ui_y - ui_top
+
+        staff_top_y = PAGE_TOP_MARGIN + current_staff_index * STAFF_BLOCK_HEIGHT
+        pdf_y = height - (staff_top_y + local_note_y)
+
         c.setFont("Helvetica-Bold", 24)
         c.drawString(x, pdf_y, symbol)
-        
-        x += spacing
-        
-        # If x exceeds page, create new page
+
+        x += NOTE_SPACING
+
+        # ✅ Horizontal overflow → move to next staff
         if x > width - 60:
-            c.showPage()
-            x = 60
-            for y2 in staff_y:
-                c.line(50, y2, width - 50, y2)
-    
+            x = LEFT_INFO_MARGIN
+            current_staff_index += 1
+
+            # ✅ Vertical overflow → new page
+            if current_staff_index >= STAFFS_PER_PAGE:
+                c.showPage()
+                current_staff_index = 0
+
+                for i in range(STAFFS_PER_PAGE):
+                    draw_staff_system(i)
     c.save()
 
 # save recordings
